@@ -194,7 +194,7 @@ PR: https://github.com/org/repo/pull/42
 
 ### Success Example (no blockers)
 
-```
+```console
 $ /notes 43
 
 Checking out PR #43...
