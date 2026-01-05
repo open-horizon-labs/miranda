@@ -119,11 +119,13 @@ export async function spawnSession(
   const { tmuxName, skillInvocation } = getSkillConfig(skill, taskId);
 
   // Build the claude command
-  // Format: claude '<skill> [taskId]' --dangerously-skip-permissions
+  // Format: env PATH=$HOME/.cargo/bin:$PATH claude '<skill> [taskId]' --dangerously-skip-permissions
   // AIDEV-NOTE: --dangerously-skip-permissions is safe here because Miranda controls
   // what skills/tasks are spawned, and permission prompts would block autonomous flow.
   // The mouse skill itself handles safety through its own review process (sg review).
-  const claudeCmd = `claude '${skillInvocation}' --dangerously-skip-permissions`;
+  // AIDEV-NOTE: Prepend cargo bin to PATH so cargo-installed tools (sg, ba, wm) take precedence.
+  // Without this, system tools like ast-grep's 'sg' may shadow superego's 'sg'.
+  const claudeCmd = `env PATH=\\$HOME/.cargo/bin:\\$PATH claude '${skillInvocation}' --dangerously-skip-permissions`;
 
   // Spawn detached tmux session
   // -d: detached (don't attach to it)
