@@ -59,7 +59,22 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
      gh pr merge <pr-number> --squash
      ```
 
-6. Report results
+6. Report results and signal completion:
+   - On success:
+     ```bash
+     curl -sf -X POST "http://localhost:${MIRANDA_PORT:-3847}/complete" \
+       -H "Content-Type: application/json" \
+       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}" || \
+       echo "Warning: Failed to signal completion to Miranda" >&2
+     ```
+   - On error:
+     ```bash
+     ERROR_MSG=$(printf '%s' "<error message>" | jq -Rs .)
+     curl -sf -X POST "http://localhost:${MIRANDA_PORT:-3847}/complete" \
+       -H "Content-Type: application/json" \
+       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": $ERROR_MSG}" || \
+       echo "Warning: Failed to signal error to Miranda" >&2
+     ```
 
 ## Stacked PRs
 
@@ -106,10 +121,9 @@ The holistic review checks what individual PR reviews can't:
 
 ## Exit Conditions
 
-- **Success**: All eligible PRs reviewed and merged
-- **Needs attention**: Batch review raised concerns - waiting for human decision
-- **Blocked**: PR has code conflicts - skip and report
-- **Blocked**: CI failing - skip and report
+- **Success**: All eligible PRs reviewed and merged → signal `status: "success"`
+- **Needs attention**: Batch review raised concerns - waiting for human decision (no signal - awaiting input)
+- **Error**: Unrecoverable failure (code conflicts, CI failing, etc.) → signal `status: "error"` with message
 
 ## Example
 
@@ -151,4 +165,7 @@ Processing PR #43 (Add edge case tests)...
 Merge train complete.
   Merged: 2 PRs (#42, #43)
   Skipped: 1 PR (#44 - awaiting drummer-merge label)
+
+Signaling completion...
+Done.
 ```
