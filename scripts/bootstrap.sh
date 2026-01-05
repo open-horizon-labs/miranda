@@ -194,12 +194,12 @@ configure_hooks_settings() {
     updated=$(jq --arg hook_path "$hook_path" '
         .hooks //= {} |
         .hooks.PreToolUse //= [] |
-        if (.hooks.PreToolUse | map(select(.matcher.tool_name == "AskUserQuestion")) | length) > 0 then
+        if (.hooks.PreToolUse | map(select(.matcher == "AskUserQuestion")) | length) > 0 then
             .
         else
             .hooks.PreToolUse += [{
-                "matcher": { "tool_name": "AskUserQuestion" },
-                "hooks": [{ "command": $hook_path }]
+                "matcher": "AskUserQuestion",
+                "hooks": [{ "type": "command", "command": $hook_path }]
             }]
         end
     ' "$settings_file")
