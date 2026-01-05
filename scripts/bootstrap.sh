@@ -141,7 +141,10 @@ install_plugins() {
 
     # Update marketplaces to get latest manifests
     log_info "Updating marketplace manifests..."
-    claude plugin marketplace update 2>/dev/null || true
+    for marketplace in "${marketplaces[@]}"; do
+        local name="${marketplace##*/}"
+        claude plugin marketplace update "$name" 2>/dev/null || true
+    done
 
     # Plugins to install (plugin@marketplace format)
     # Convention: plugin name matches marketplace name (e.g., miranda plugin from miranda marketplace)
