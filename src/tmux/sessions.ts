@@ -125,7 +125,7 @@ export async function spawnSession(
   // The mouse skill itself handles safety through its own review process (sg review).
   // AIDEV-NOTE: Prepend cargo bin to PATH so cargo-installed tools (sg, ba, wm) take precedence.
   // Without this, system tools like ast-grep's 'sg' may shadow superego's 'sg'.
-  const claudeCmd = `claude '${skillInvocation}' --dangerously-skip-permissions`;
+  const claudeCmd = `env PATH=\\$HOME/.cargo/bin:\\$PATH claude '${skillInvocation}' --dangerously-skip-permissions`;
 
   // Spawn detached tmux session
   // -d: detached (don't attach to it)
