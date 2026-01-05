@@ -5,5 +5,8 @@ dist/
 .env
 .env.local
 
+env
+.wm
+
 # Superego
 .superego/
