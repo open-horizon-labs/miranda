@@ -59,7 +59,19 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
      gh pr merge <pr-number> --squash
      ```
 
-6. Report results
+6. Report results and signal completion:
+   - On success:
+     ```bash
+     curl -X POST http://localhost:3847/complete \
+       -H "Content-Type: application/json" \
+       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}"
+     ```
+   - On error:
+     ```bash
+     curl -X POST http://localhost:3847/complete \
+       -H "Content-Type: application/json" \
+       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"<error message>\"}"
+     ```
 
 ## Stacked PRs
 
@@ -106,10 +118,9 @@ The holistic review checks what individual PR reviews can't:
 
 ## Exit Conditions
 
-- **Success**: All eligible PRs reviewed and merged
-- **Needs attention**: Batch review raised concerns - waiting for human decision
-- **Blocked**: PR has code conflicts - skip and report
-- **Blocked**: CI failing - skip and report
+- **Success**: All eligible PRs reviewed and merged → signal `status: "success"`
+- **Needs attention**: Batch review raised concerns - waiting for human decision (no signal - awaiting input)
+- **Error**: Unrecoverable failure (code conflicts, CI failing, etc.) → signal `status: "error"` with message
 
 ## Example
 
@@ -151,4 +162,7 @@ Processing PR #43 (Add edge case tests)...
 Merge train complete.
   Merged: 2 PRs (#42, #43)
   Skipped: 1 PR (#44 - awaiting drummer-merge label)
+
+Signaling completion...
+Done.
 ```
