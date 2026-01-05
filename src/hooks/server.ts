@@ -1,7 +1,8 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import type { HookNotification } from "../types.js";
+import type { HookNotification, CompletionNotification } from "../types.js";
 
 export type NotificationHandler = (notification: HookNotification) => void;
+export type CompletionHandler = (completion: CompletionNotification) => void;
 
 export interface HookServer {
   start(): Promise<void>;
@@ -10,11 +11,14 @@ export interface HookServer {
 
 export function createHookServer(
   port: number,
-  onNotification: NotificationHandler
+  onNotification: NotificationHandler,
+  onCompletion: CompletionHandler
 ): HookServer {
   const server = createServer((req, res) => {
     if (req.method === "POST" && req.url === "/notify") {
       handleNotify(req, res, onNotification);
+    } else if (req.method === "POST" && req.url === "/complete") {
+      handleComplete(req, res, onCompletion);
     } else {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Not found" }));
@@ -89,6 +93,59 @@ function handleNotify(
       }
 
       onNotification(notification);
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok" }));
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid JSON" }));
+    }
+  });
+
+  req.on("error", () => {
+    if (aborted) return;
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Request error" }));
+  });
+}
+
+function handleComplete(
+  req: IncomingMessage,
+  res: ServerResponse,
+  onCompletion: CompletionHandler
+): void {
+  let body = "";
+  let aborted = false;
+
+  req.on("data", (chunk: Buffer) => {
+    if (aborted) return;
+    body += chunk.toString();
+    if (body.length > MAX_BODY_SIZE) {
+      aborted = true;
+      req.destroy();
+      res.writeHead(413, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Payload too large" }));
+    }
+  });
+
+  req.on("end", () => {
+    if (aborted) return;
+    try {
+      const completion = JSON.parse(body) as CompletionNotification;
+
+      // Validate required fields and optional field types
+      if (
+        typeof completion.session !== "string" ||
+        (completion.status !== "success" && completion.status !== "error") ||
+        (completion.pr !== undefined && typeof completion.pr !== "string") ||
+        (completion.error !== undefined && typeof completion.error !== "string")
+      ) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid completion format" }));
+        return;
+      }
+
+      onCompletion(completion);
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));

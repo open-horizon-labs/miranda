@@ -7,9 +7,11 @@ import { sendKeys } from "./tmux/sessions.js";
 import {
   getSession,
   setSession,
+  deleteSession,
   findSessionByTmuxName,
 } from "./state/sessions.js";
-import type { HookNotification } from "./types.js";
+import type { HookNotification, CompletionNotification } from "./types.js";
+import { escapeForCodeBlock } from "./utils/telegram.js";
 
 // Validate configuration
 validateConfig();
@@ -129,8 +131,49 @@ function handleNotification(notification: HookNotification): void {
     });
 }
 
+// Completion handler - called when skill finishes
+function handleCompletion(completion: CompletionNotification): void {
+  const session = findSessionByTmuxName(completion.session);
+  if (!session) {
+    console.warn(`Completion for unknown session: ${completion.session}`);
+    return;
+  }
+
+  const taskId = session.taskId;
+  const chatId = session.chatId;
+
+  // Remove session from tracking immediately - the skill is done regardless of
+  // whether we successfully notify the user. Telegram delivery is best-effort.
+  deleteSession(taskId);
+
+  // Send notification to Telegram
+  if (completion.status === "success") {
+    // Escape parentheses in URL to prevent breaking Markdown link syntax
+    const escapedPr = completion.pr?.replace(/\(/g, "%28").replace(/\)/g, "%29");
+    const prLink = escapedPr ? `\n\n[View PR](${escapedPr})` : "";
+    bot.api
+      .sendMessage(chatId, `*${taskId}* completed successfully${prLink}`, {
+        parse_mode: "Markdown",
+      })
+      .catch((err) => {
+        console.error("Failed to send completion notification:", err);
+      });
+  } else {
+    const errorMsg = completion.error
+      ? `\n\n\`${escapeForCodeBlock(completion.error)}\``
+      : "";
+    bot.api
+      .sendMessage(chatId, `*${taskId}* failed${errorMsg}`, {
+        parse_mode: "Markdown",
+      })
+      .catch((err) => {
+        console.error("Failed to send error notification:", err);
+      });
+  }
+}
+
 // Start hook server
-const hookServer = createHookServer(config.hookPort, handleNotification);
+const hookServer = createHookServer(config.hookPort, handleNotification, handleCompletion);
 
 // Start bot and hook server
 console.log("Miranda starting...");

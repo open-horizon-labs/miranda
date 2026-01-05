@@ -62,3 +62,12 @@ export type CallbackAction =
 // Skill invocation: claude '<skill> [args]' --dangerously-skip-permissions
 // e.g., "claude 'mouse kv-xxld' --dangerously-skip-permissions"
 // e.g., "claude 'drummer' --dangerously-skip-permissions"
+
+// === Completion Notification ===
+
+export interface CompletionNotification {
+  session: string; // tmux session name
+  status: "success" | "error";
+  pr?: string; // PR URL on success
+  error?: string; // Error message on failure
+}
