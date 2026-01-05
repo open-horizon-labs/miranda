@@ -148,7 +148,9 @@ function handleCompletion(completion: CompletionNotification): void {
 
   // Send notification to Telegram
   if (completion.status === "success") {
-    const prLink = completion.pr ? `\n\n[View PR](${completion.pr})` : "";
+    // Escape parentheses in URL to prevent breaking Markdown link syntax
+    const escapedPr = completion.pr?.replace(/\(/g, "%28").replace(/\)/g, "%29");
+    const prLink = escapedPr ? `\n\n[View PR](${escapedPr})` : "";
     bot.api
       .sendMessage(chatId, `*${taskId}* completed successfully${prLink}`, {
         parse_mode: "Markdown",
