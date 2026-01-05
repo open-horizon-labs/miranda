@@ -1,3 +1,10 @@
+import { homedir } from "os";
+import { join } from "path";
+
+function expandTilde(path: string): string {
+  return path.startsWith("~") ? join(homedir(), path.slice(1)) : path;
+}
+
 export const config = {
   botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   allowedUserIds: (process.env.ALLOWED_USER_IDS ?? "")
@@ -6,6 +13,7 @@ export const config = {
     .filter((id) => !isNaN(id)),
   hookPort: parseInt(process.env.MIRANDA_PORT ?? "3847", 10),
   defaultProject: process.env.MIRANDA_DEFAULT_PROJECT ?? "",
+  projectsDir: expandTilde(process.env.PROJECTS_DIR ?? "~/projects"),
 } as const;
 
 export function validateConfig(): void {
