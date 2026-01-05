@@ -1,9 +1,12 @@
 // === Session State ===
 
+/** Supported skill types for Miranda */
+export type SkillType = "mouse" | "drummer" | "notes";
+
 export interface Session {
   taskId: string;
   tmuxName: string; // e.g., "mouse-kv-xxld"
-  skill: "mouse" | "drummer";
+  skill: SkillType;
   status: "starting" | "running" | "waiting_input" | "stopped";
   startedAt: Date;
   chatId: number; // Telegram chat for notifications

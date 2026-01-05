@@ -25,7 +25,9 @@ import type { Session } from "../types.js";
  * - /mouse <task-id> - Spawn a mouse session
  * - /status - List all sessions
  * - /stop <task-id> - Kill a session
- * - /logs, /ssh, /drummer - Stubs for future implementation
+ * - /drummer - Run batch merge
+ * - /notes <pr-number> - Address PR feedback
+ * - /logs, /ssh - Stubs for future implementation
  */
 export function registerCommands(bot: Bot<Context>): void {
   bot.command("start", handleStart);
@@ -34,6 +36,7 @@ export function registerCommands(bot: Bot<Context>): void {
   bot.command("status", handleStatus);
   bot.command("stop", handleStop);
   bot.command("drummer", handleDrummer);
+  bot.command("notes", handleNotes);
   bot.command("logs", handleLogs);
   bot.command("ssh", handleSsh);
 
@@ -49,8 +52,9 @@ I give voice to the Primer. Commands:
 
 /projects - List projects with tasks
 /mouse <task-id> - Start a mouse on a task
-/status - Show active sessions
 /drummer - Run batch merge
+/notes <pr-number> - Address PR feedback
+/status - Show active sessions
 /stop <task-id> - Stop a session
 /logs <task-id> - View session logs
 /ssh - Get SSH command
@@ -266,6 +270,61 @@ Reviewing PRs with \`drummer-merge\` label...`,
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await ctx.reply(`Failed to start drummer: ${message}`);
+  }
+}
+
+async function handleNotes(ctx: Context): Promise<void> {
+  const prNumber = ctx.match?.toString().trim();
+  if (!prNumber) {
+    await ctx.reply("Usage: /notes <pr-number>");
+    return;
+  }
+
+  // Validate PR number is numeric
+  if (!/^\d+$/.test(prNumber)) {
+    await ctx.reply("Error: PR number must be numeric (e.g., /notes 42)");
+    return;
+  }
+
+  // Use PR number as session key
+  const sessionKey = `notes-${prNumber}`;
+  const existing = getSession(sessionKey);
+  if (existing) {
+    await ctx.reply(`Notes session for PR #${prNumber} already exists (${existing.status})`);
+    return;
+  }
+
+  const chatId = ctx.chat?.id;
+  if (!chatId) {
+    await ctx.reply("Error: Could not determine chat ID");
+    return;
+  }
+
+  await ctx.reply(`Starting notes for PR #${prNumber}...`, { parse_mode: "Markdown" });
+
+  try {
+    const tmuxName = await spawnSession("notes", prNumber, chatId);
+
+    const session: Session = {
+      taskId: sessionKey,
+      tmuxName,
+      skill: "notes",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    await ctx.reply(
+      `Notes running for PR #${prNumber}
+Session: \`${tmuxName}\`
+
+Addressing human feedback...`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`Failed to start notes: ${message}`);
   }
 }
 

@@ -1,6 +1,7 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { config } from "../config.js";
+import type { SkillType } from "../types.js";
 
 const execAsync = promisify(exec);
 
@@ -42,8 +43,16 @@ export function getDrummerTmuxName(): string {
   return `drummer-${timestamp}`;
 }
 
-/** Supported skill types for Miranda */
-export type SkillType = "mouse" | "drummer";
+/**
+ * Generate the tmux session name for a notes session
+ * Uses PR number for identification
+ */
+export function getNotesTmuxName(prNumber: string): string {
+  return `notes-${prNumber}`;
+}
+
+// Re-export SkillType for consumers that import from sessions.ts
+export type { SkillType } from "../types.js";
 
 /** Configuration for each skill type */
 interface SkillConfig {
@@ -71,6 +80,16 @@ function getSkillConfig(skill: SkillType, taskId: string | undefined): SkillConf
       return {
         tmuxName: getDrummerTmuxName(),
         skillInvocation: "drummer",
+      };
+    }
+    case "notes": {
+      if (!taskId) {
+        throw new Error("spawnSession: PR number is required for notes skill");
+      }
+      validateShellSafe(taskId, "prNumber");
+      return {
+        tmuxName: getNotesTmuxName(taskId),
+        skillInvocation: `notes ${taskId}`,
       };
     }
     default: {
@@ -179,8 +198,12 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
           attached: attached === "1",
         };
       })
-      // Only return Miranda-managed sessions (mouse-* or drummer-* prefix)
-      .filter((session) => session.name.startsWith("mouse-") || session.name.startsWith("drummer-"));
+      // Only return Miranda-managed sessions (mouse-*, drummer-*, or notes-* prefix)
+      .filter((session) =>
+        session.name.startsWith("mouse-") ||
+        session.name.startsWith("drummer-") ||
+        session.name.startsWith("notes-")
+      );
   } catch (error) {
     // No tmux server running means no sessions
     const err = error as { stderr?: string };
