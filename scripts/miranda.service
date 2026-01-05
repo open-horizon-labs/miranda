@@ -4,7 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
+# IMPORTANT: Must run as non-root user. Claude's --dangerously-skip-permissions
+# is blocked when running as root for security reasons.
 User=%i
+Group=%i
 WorkingDirectory=/home/%i/miranda
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
@@ -12,6 +15,7 @@ RestartSec=5
 
 # Environment
 Environment=NODE_ENV=production
+Environment=PATH=/home/%i/.cargo/bin:/home/%i/.local/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/home/%i/.config/miranda/env
 
 # Logging
