@@ -24,7 +24,7 @@ import type { Session } from "../types.js";
  * - /projects - List projects with task counts
  * - /mouse <task-id> - Spawn a mouse session
  * - /status - List all sessions
- * - /stop <task-id> - Kill a session
+ * - /stop <session> - Kill a session (task-id or full session name)
  * - /drummer - Run batch merge
  * - /notes <pr-number> - Address PR feedback
  * - /logs, /ssh - Stubs for future implementation
@@ -55,7 +55,7 @@ I give voice to the Primer. Commands:
 /drummer - Run batch merge
 /notes <pr-number> - Address PR feedback
 /status - Show active sessions
-/stop <task-id> - Stop a session
+/stop <session> - Stop a session
 /logs <task-id> - View session logs
 /ssh - Get SSH command
 
@@ -198,21 +198,40 @@ async function handleStatus(ctx: Context): Promise<void> {
 }
 
 async function handleStop(ctx: Context): Promise<void> {
-  const taskId = ctx.match?.toString().trim();
-  if (!taskId) {
-    await ctx.reply("Usage: /stop <task-id>");
+  const input = ctx.match?.toString().trim();
+  if (!input) {
+    await ctx.reply("Usage: /stop <task-id or session-name>");
     return;
   }
 
-  const session = getSession(taskId);
-  const tmuxName = session?.tmuxName ?? getTmuxName(taskId);
+  // Check if input is a fully qualified session name (mouse-*, drummer-*, notes-*)
+  // or a bare task ID that needs the mouse- prefix
+  const isFullyQualified =
+    input.startsWith("mouse-") ||
+    input.startsWith("drummer-") ||
+    input.startsWith("notes-");
+
+  // Try to find session by input (works for both task IDs and tmux names)
+  const session = getSession(input);
+  let tmuxName: string;
+
+  if (session) {
+    // Found in state - use its tmux name
+    tmuxName = session.tmuxName;
+  } else if (isFullyQualified) {
+    // Fully qualified name not in state - use directly
+    tmuxName = input;
+  } else {
+    // Bare task ID - construct mouse session name
+    tmuxName = getTmuxName(input);
+  }
 
   try {
     await killSession(tmuxName);
 
     if (session) {
-      deleteSession(taskId);
-      await ctx.reply(`Stopped session \`${taskId}\``, { parse_mode: "Markdown" });
+      deleteSession(input);
+      await ctx.reply(`Stopped session \`${input}\``, { parse_mode: "Markdown" });
     } else {
       await ctx.reply(`Killed tmux session \`${tmuxName}\` (was not tracked)`, {
         parse_mode: "Markdown",
