@@ -183,7 +183,7 @@ setup_skills() {
         fi
     fi
 
-    # List installed skills (from both plugins and manual sources)
+    # List installed manual skills (plugins are tracked separately)
     if [[ -d "$SKILLS_DIR" ]]; then
         local skill_count
         skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l)
