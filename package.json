@@ -18,7 +18,7 @@
     "diamond-age"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
     "grammy": "^1.21.1",
     "better-sqlite3": "^11.0.0"
