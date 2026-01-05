@@ -62,15 +62,18 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
 6. Report results and signal completion:
    - On success:
      ```bash
-     curl -X POST http://localhost:3847/complete \
+     curl -sf -X POST "http://localhost:${MIRANDA_PORT:-3847}/complete" \
        -H "Content-Type: application/json" \
-       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}"
+       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}" || \
+       echo "Warning: Failed to signal completion to Miranda" >&2
      ```
    - On error:
      ```bash
-     curl -X POST http://localhost:3847/complete \
+     ERROR_MSG=$(printf '%s' "<error message>" | jq -Rs .)
+     curl -sf -X POST "http://localhost:${MIRANDA_PORT:-3847}/complete" \
        -H "Content-Type: application/json" \
-       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"<error message>\"}"
+       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": $ERROR_MSG}" || \
+       echo "Warning: Failed to signal error to Miranda" >&2
      ```
 
 ## Stacked PRs
