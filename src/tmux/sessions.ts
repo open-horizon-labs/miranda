@@ -42,37 +42,68 @@ export function getDrummerTmuxName(): string {
   return `drummer-${timestamp}`;
 }
 
+/** Supported skill types for Miranda */
+export type SkillType = "mouse" | "drummer";
+
+/** Configuration for each skill type */
+interface SkillConfig {
+  tmuxName: string;
+  skillInvocation: string;
+}
+
+/**
+ * Get skill configuration based on skill type.
+ * Uses switch statement to make adding new skills explicit and catch unknown skills at compile time.
+ */
+function getSkillConfig(skill: SkillType, taskId: string | undefined): SkillConfig {
+  switch (skill) {
+    case "mouse": {
+      if (!taskId) {
+        throw new Error("spawnSession: taskId is required for mouse skill");
+      }
+      validateShellSafe(taskId, "taskId");
+      return {
+        tmuxName: getTmuxName(taskId),
+        skillInvocation: `mouse ${taskId}`,
+      };
+    }
+    case "drummer": {
+      return {
+        tmuxName: getDrummerTmuxName(),
+        skillInvocation: "drummer",
+      };
+    }
+    default: {
+      // Exhaustiveness guard: TypeScript will error here if a new SkillType is added but not handled
+      const _exhaustive: never = skill;
+      throw new Error(`spawnSession: Unknown skill type: ${_exhaustive}`);
+    }
+  }
+}
+
 /**
  * Spawn a new tmux session running a Claude skill
  *
- * @param skill - The skill to run (e.g., "mouse", "drummer")
- * @param taskId - The task ID to pass to the skill (optional for drummer)
+ * @param skill - The skill to run ("mouse" or "drummer")
+ * @param taskId - The task ID (required for mouse, ignored for drummer)
  * @param chatId - Telegram chat ID for notifications (unused here, tracked by caller)
  * @returns The tmux session name
  */
 export async function spawnSession(
-  skill: string,
+  skill: SkillType,
   taskId: string | undefined,
-  chatId: number
+  _chatId: number
 ): Promise<string> {
-  // Validate inputs to prevent command injection
-  validateShellSafe(skill, "skill");
-  if (taskId) {
-    validateShellSafe(taskId, "taskId");
-  }
+  // _chatId is tracked by the caller (state/db.ts), not used in tmux command
 
-  // chatId is tracked by the caller (state/db.ts), not used in tmux command
-  void chatId;
-
-  // Determine tmux session name based on skill type
-  const tmuxName = taskId ? getTmuxName(taskId) : getDrummerTmuxName();
+  // Get skill-specific configuration (validates inputs and determines tmux name)
+  const { tmuxName, skillInvocation } = getSkillConfig(skill, taskId);
 
   // Build the claude command
   // Format: claude '<skill> [taskId]' --dangerously-skip-permissions
   // AIDEV-NOTE: --dangerously-skip-permissions is safe here because Miranda controls
   // what skills/tasks are spawned, and permission prompts would block autonomous flow.
   // The mouse skill itself handles safety through its own review process (sg review).
-  const skillInvocation = taskId ? `${skill} ${taskId}` : skill;
   const claudeCmd = `claude '${skillInvocation}' --dangerously-skip-permissions`;
 
   // Spawn detached tmux session
