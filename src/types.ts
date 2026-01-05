@@ -3,7 +3,7 @@
 export interface Session {
   taskId: string;
   tmuxName: string; // e.g., "mouse-kv-xxld"
-  skill: string; // "mouse" or "drummer"
+  skill: "mouse" | "drummer";
   status: "starting" | "running" | "waiting_input" | "stopped";
   startedAt: Date;
   chatId: number; // Telegram chat for notifications
@@ -40,7 +40,7 @@ export interface QuestionOption {
 
 export interface HookNotification {
   session: string; // tmux session name
-  tool: string; // "AskUserQuestion"
+  tool: "AskUserQuestion";
   input: {
     questions: Question[];
   };
