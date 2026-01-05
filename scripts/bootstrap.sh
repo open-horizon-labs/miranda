@@ -10,7 +10,12 @@
 #   ./bootstrap.sh [--skills-source <path>]
 #
 # Options:
-#   --skills-source <path>   Copy skills from local path instead of prompting
+#   --skills-source <path>   Copy additional manual skills from local path
+#
+# Installs:
+#   - Cargo tools: ba, sg, wm
+#   - Plugins via marketplace: miranda, superego, wm
+#   - Hooks: notify-miranda.sh for AskUserQuestion notifications
 
 set -euo pipefail
 
@@ -111,7 +116,56 @@ install_cargo_tools() {
     done
 }
 
-# Set up skills directory
+# Install plugins via marketplace
+install_plugins() {
+    log_info "Installing plugins via marketplace..."
+
+    # Marketplaces to add (GitHub repos)
+    local marketplaces=(
+        "cloud-atlas-ai/miranda"
+        "cloud-atlas-ai/superego"
+        "cloud-atlas-ai/wm"
+    )
+
+    # Add marketplaces
+    for marketplace in "${marketplaces[@]}"; do
+        local name="${marketplace##*/}"  # Extract repo name
+        log_info "Adding marketplace: $name..."
+        if claude plugin marketplace add "$marketplace" 2>/dev/null; then
+            log_success "Added marketplace: $name"
+        else
+            # May already exist, which is fine
+            log_info "Marketplace $name already configured or failed to add"
+        fi
+    done
+
+    # Update marketplaces to get latest manifests
+    log_info "Updating marketplace manifests..."
+    for marketplace in "${marketplaces[@]}"; do
+        local name="${marketplace##*/}"
+        claude plugin marketplace update "$name" 2>/dev/null || true
+    done
+
+    # Plugins to install (plugin@marketplace format)
+    # Convention: plugin name matches marketplace name (e.g., miranda plugin from miranda marketplace)
+    local plugins=(
+        "miranda@miranda"
+        "superego@superego"
+        "wm@wm"
+    )
+
+    # Install plugins
+    for plugin in "${plugins[@]}"; do
+        log_info "Installing plugin: $plugin..."
+        if claude plugin install "$plugin" 2>/dev/null; then
+            log_success "Installed plugin: $plugin"
+        else
+            log_warn "Failed to install $plugin (may already be installed)"
+        fi
+    done
+}
+
+# Set up skills directory (for additional manual skills)
 setup_skills() {
     log_info "Setting up skills..."
 
@@ -123,35 +177,22 @@ setup_skills() {
             log_error "Skills source not found: $SKILLS_SOURCE"
             exit 1
         fi
-        log_info "Copying skills from $SKILLS_SOURCE..."
+        log_info "Copying additional skills from $SKILLS_SOURCE..."
         # Use /. to handle hidden files and empty directories correctly
         if cp -r "$SKILLS_SOURCE"/. "$SKILLS_DIR/" 2>/dev/null; then
             log_success "Skills copied from $SKILLS_SOURCE"
         else
             log_warn "Failed to copy skills from $SKILLS_SOURCE (directory may be empty)"
         fi
-    else
-        # Check if any skills already exist (generic check, not hardcoded)
-        local existing_count
-        existing_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l)
-        if [[ $existing_count -gt 0 ]]; then
-            log_success "Skills already present ($existing_count found)"
-        else
-            log_warn "No skills source provided and skills not present."
-            echo ""
-            echo "To copy skills from another machine:"
-            echo "  scp -r <source>:~/.claude/skills/ ~/skills-to-copy/"
-            echo "  $0 --skills-source ~/skills-to-copy"
-            echo ""
-            echo "Or manually copy skill files to: $SKILLS_DIR"
-        fi
     fi
 
-    # List installed skills
+    # List installed manual skills (plugins are tracked separately)
     if [[ -d "$SKILLS_DIR" ]]; then
         local skill_count
         skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l)
-        log_info "Found $skill_count skill(s) in $SKILLS_DIR"
+        if [[ $skill_count -gt 0 ]]; then
+            log_info "Found $skill_count manual skill(s) in $SKILLS_DIR"
+        fi
     fi
 }
 
@@ -228,16 +269,30 @@ print_summary() {
         fi
     done
 
-    # Skills
+    # Plugins (check actual installation status via installed_plugins.json)
+    local plugins_json="${CLAUDE_DIR}/plugins/installed_plugins.json"
+    echo ""
+    echo "Plugins (via marketplace):"
+    for plugin in miranda superego wm; do
+        if [[ -f "$plugins_json" ]] && jq -e ".plugins[\"${plugin}@${plugin}\"]" "$plugins_json" &>/dev/null; then
+            echo "  [x] $plugin"
+        else
+            echo "  [ ] $plugin (not installed)"
+        fi
+    done
+
+    # Manual skills
     if [[ -d "$SKILLS_DIR" ]]; then
         local skill_count
         skill_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l)
-        echo "  [x] $skill_count skill(s)"
-    else
-        echo "  [ ] Skills (none)"
+        if [[ $skill_count -gt 0 ]]; then
+            echo ""
+            echo "Manual skills: $skill_count"
+        fi
     fi
 
     # Hooks
+    echo ""
     if [[ -f "${HOOKS_DIR}/notify-miranda.sh" ]]; then
         echo "  [x] notify-miranda.sh hook"
     else
@@ -246,12 +301,12 @@ print_summary() {
 
     echo ""
     echo "Configuration:"
-    echo "  Skills: $SKILLS_DIR"
-    echo "  Hooks:  $HOOKS_DIR"
-    echo "  Config: ${CLAUDE_DIR}/settings.json"
+    echo "  Plugins: claude plugin list"
+    echo "  Hooks:   $HOOKS_DIR"
+    echo "  Config:  ${CLAUDE_DIR}/settings.json"
     echo ""
     echo "Next steps:"
-    echo "  1. Verify skills: ls ~/.claude/skills/"
+    echo "  1. Verify plugins: claude plugin list"
     echo "  2. Test ba: ba init && ba create 'Test task'"
     echo "  3. Start Claude Code in a project directory"
     echo ""
@@ -267,6 +322,7 @@ main() {
 
     check_prerequisites
     install_cargo_tools
+    install_plugins
     setup_skills
     setup_hooks
     print_summary
