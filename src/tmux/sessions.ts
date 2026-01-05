@@ -137,7 +137,8 @@ export async function spawnSession(
     const escapedPath = config.defaultProject.replace(/'/g, "'\\''");
     startDirFlag = ` -c '${escapedPath}'`;
   }
-  const cmd = `tmux new-session -d -s ${tmuxName}${startDirFlag} -e TMUX_SESSION=${tmuxName} "${claudeCmd}"`;
+  // Pass both TMUX_SESSION (for hook to identify session) and MIRANDA_PORT (for completion signaling)
+  const cmd = `tmux new-session -d -s ${tmuxName}${startDirFlag} -e TMUX_SESSION=${tmuxName} -e MIRANDA_PORT=${config.hookPort} "${claudeCmd}"`;
 
   await execAsync(cmd);
   return tmuxName;
