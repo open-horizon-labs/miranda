@@ -5,6 +5,7 @@ export const config = {
     .map((id) => parseInt(id.trim(), 10))
     .filter((id) => !isNaN(id)),
   hookPort: parseInt(process.env.MIRANDA_PORT ?? "3847", 10),
+  defaultProject: process.env.MIRANDA_DEFAULT_PROJECT ?? "",
 } as const;
 
 export function validateConfig(): void {

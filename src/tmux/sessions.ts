@@ -1,5 +1,6 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import { config } from "../config.js";
 
 const execAsync = promisify(exec);
 
@@ -65,7 +66,13 @@ export async function spawnSession(
   // -d: detached (don't attach to it)
   // -s: session name
   // -e: set TMUX_SESSION env var for notify-miranda.sh hook to identify session
-  const cmd = `tmux new-session -d -s ${tmuxName} -e TMUX_SESSION=${tmuxName} "${claudeCmd}"`;
+  // -c: start directory (if MIRANDA_DEFAULT_PROJECT is set)
+  let startDirFlag = "";
+  if (config.defaultProject) {
+    const escapedPath = config.defaultProject.replace(/'/g, "'\\''");
+    startDirFlag = ` -c '${escapedPath}'`;
+  }
+  const cmd = `tmux new-session -d -s ${tmuxName}${startDirFlag} -e TMUX_SESSION=${tmuxName} "${claudeCmd}"`;
 
   await execAsync(cmd);
   return tmuxName;
