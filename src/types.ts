@@ -67,7 +67,8 @@ export type CallbackAction =
 
 export interface CompletionNotification {
   session: string; // tmux session name
-  status: "success" | "error";
+  status: "success" | "error" | "blocked";
   pr?: string; // PR URL on success
   error?: string; // Error message on failure
+  blocker?: string; // Reason for blocked status
 }

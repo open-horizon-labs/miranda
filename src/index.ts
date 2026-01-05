@@ -158,6 +158,17 @@ function handleCompletion(completion: CompletionNotification): void {
       .catch((err) => {
         console.error("Failed to send completion notification:", err);
       });
+  } else if (completion.status === "blocked") {
+    const blockerMsg = completion.blocker
+      ? `\n\n\`${escapeForCodeBlock(completion.blocker)}\``
+      : "";
+    bot.api
+      .sendMessage(chatId, `*${taskId}* blocked - needs human decision${blockerMsg}`, {
+        parse_mode: "Markdown",
+      })
+      .catch((err) => {
+        console.error("Failed to send blocked notification:", err);
+      });
   } else {
     const errorMsg = completion.error
       ? `\n\n\`${escapeForCodeBlock(completion.error)}\``
