@@ -58,6 +58,19 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
      ```bash
      gh pr merge <pr-number> --squash
      ```
+   - **Verify task closure** - After merge, ensure all tasks from this PR are closed:
+     ```bash
+     git pull origin main
+     for task_id in <tasks-from-pr>; do
+       ba show $task_id  # Check status
+       # If not closed, fix it:
+       ba finish $task_id
+     done
+     # If any fixes were needed:
+     git add .ba/ && git commit -m "fix: close tasks after merge" && git push origin main
+     ```
+     Squash merge can lose .ba/ changes during conflict resolution. This step ensures
+     all merged tasks end in closed state regardless of what the merge preserved.
 
 6. Report results and signal completion:
    - On success:

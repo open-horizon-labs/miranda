@@ -1,6 +1,6 @@
 {
   "name": "miranda",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Mouse, Drummer, and Notes skills for autonomous task execution, batch PR merging, and PR feedback handling",
   "author": {
     "name": "Drazen Urch",
