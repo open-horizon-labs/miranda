@@ -6,6 +6,7 @@ import {
   getTmuxName,
   listTmuxSessions,
   sendKeys,
+  type TmuxSession,
 } from "../tmux/sessions.js";
 import {
   getSession,
@@ -17,6 +18,27 @@ import { scanProjects } from "../projects/scanner.js";
 import type { Session } from "../types.js";
 
 /**
+ * Get orphaned tmux sessions (in tmux but not tracked in state).
+ * Exported for use by callback handler.
+ */
+export async function getOrphanedSessions(): Promise<TmuxSession[]> {
+  const sessions = getAllSessions();
+  const tmuxSessions = await listTmuxSessions();
+  const trackedNames = new Set(sessions.map((s) => s.tmuxName));
+  return tmuxSessions.filter((t) => !trackedNames.has(t.name));
+}
+
+/**
+ * Kill all orphaned tmux sessions.
+ * Returns the count of sessions killed.
+ */
+export async function cleanupOrphanedSessions(): Promise<number> {
+  const orphaned = await getOrphanedSessions();
+  await Promise.allSettled(orphaned.map((t) => killSession(t.name)));
+  return orphaned.length;
+}
+
+/**
  * Register command handlers on the bot instance.
  *
  * Commands implemented:
@@ -25,6 +47,7 @@ import type { Session } from "../types.js";
  * - /mouse <task-id> - Spawn a mouse session
  * - /status - List all sessions
  * - /stop <session> - Kill a session (task-id or full session name)
+ * - /cleanup - Remove orphaned tmux sessions
  * - /drummer - Run batch merge
  * - /notes <pr-number> - Address PR feedback
  * - /logs, /ssh - Stubs for future implementation
@@ -35,6 +58,7 @@ export function registerCommands(bot: Bot<Context>): void {
   bot.command("mouse", handleMouse);
   bot.command("status", handleStatus);
   bot.command("stop", handleStop);
+  bot.command("cleanup", handleCleanup);
   bot.command("drummer", handleDrummer);
   bot.command("notes", handleNotes);
   bot.command("logs", handleLogs);
@@ -56,6 +80,7 @@ I give voice to the Primer. Commands:
 /notes <pr-number> - Address PR feedback
 /status - Show active sessions
 /stop <session> - Stop a session
+/cleanup - Remove orphaned sessions
 /logs <task-id> - View session logs
 /ssh - Get SSH command
 
@@ -241,6 +266,37 @@ async function handleStop(ctx: Context): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     await ctx.reply(`Failed to stop: ${message}`);
   }
+}
+
+/**
+ * Find and remove orphaned tmux sessions.
+ * Orphaned = tmux session exists (mouse-*, drummer-*, notes-*) but not tracked in state.
+ */
+async function handleCleanup(ctx: Context): Promise<void> {
+  const orphaned = await getOrphanedSessions();
+
+  if (orphaned.length === 0) {
+    await ctx.reply("*Cleanup*\n\n_No orphaned sessions found_", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Build message listing orphaned sessions
+  const lines: string[] = ["*Cleanup*", "", `Found ${orphaned.length} orphaned session(s):`, ""];
+  for (const t of orphaned) {
+    lines.push(`  \`${t.name}\``);
+  }
+
+  // Build confirmation keyboard
+  const keyboard = new InlineKeyboard()
+    .text("Remove All", "cleanup:confirm")
+    .text("Cancel", "cleanup:cancel");
+
+  await ctx.reply(lines.join("\n"), {
+    parse_mode: "Markdown",
+    reply_markup: keyboard,
+  });
 }
 
 async function handleDrummer(ctx: Context): Promise<void> {

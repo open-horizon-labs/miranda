@@ -1,6 +1,6 @@
 import { Bot } from "grammy";
 import { config, validateConfig } from "./config.js";
-import { registerCommands } from "./bot/commands.js";
+import { registerCommands, cleanupOrphanedSessions } from "./bot/commands.js";
 import { parseCallback, formatAnswer, buildQuestionKeyboard } from "./bot/keyboards.js";
 import { createHookServer } from "./hooks/server.js";
 import { sendKeys } from "./tmux/sessions.js";
@@ -35,6 +35,34 @@ registerCommands(bot);
 // Callback query handler for inline keyboards
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
+
+  // Handle cleanup callbacks (not session-related)
+  if (data === "cleanup:confirm") {
+    try {
+      const count = await cleanupOrphanedSessions();
+      await ctx.answerCallbackQuery({ text: `Removed ${count} session(s)` });
+      await ctx.editMessageText(`*Cleanup*\n\n_Removed ${count} orphaned session(s)_`, {
+        parse_mode: "Markdown",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await ctx.answerCallbackQuery({ text: `Error: ${message}` });
+      await ctx.editMessageText(`*Cleanup*\n\n_Error: ${message}_`, {
+        parse_mode: "Markdown",
+      }).catch(() => {}); // Best-effort update
+    }
+    return;
+  }
+
+  if (data === "cleanup:cancel") {
+    await ctx.answerCallbackQuery({ text: "Cancelled" });
+    await ctx.editMessageText("*Cleanup*\n\n_Cancelled_", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Handle question/answer callbacks
   const action = parseCallback(data);
 
   if (!action) {
