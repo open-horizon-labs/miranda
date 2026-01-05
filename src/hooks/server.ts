@@ -136,9 +136,10 @@ function handleComplete(
       // Validate required fields and optional field types
       if (
         typeof completion.session !== "string" ||
-        (completion.status !== "success" && completion.status !== "error") ||
+        (completion.status !== "success" && completion.status !== "error" && completion.status !== "blocked") ||
         (completion.pr !== undefined && typeof completion.pr !== "string") ||
-        (completion.error !== undefined && typeof completion.error !== "string")
+        (completion.error !== undefined && typeof completion.error !== "string") ||
+        (completion.blocker !== undefined && typeof completion.blocker !== "string")
       ) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid completion format" }));

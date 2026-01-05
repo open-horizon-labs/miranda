@@ -117,6 +117,33 @@ Same as mouse skill:
 - **Blocked**: Comment requires human decision - report and stop
 - **Safety**: Max 10 task iterations (prevent runaway)
 
+## Completion Signaling
+
+Signal completion to Miranda at ALL exit points. Use `$TMUX` to get the session name:
+
+**On success** (all comments addressed, pushed):
+```bash
+curl -sf -X POST http://localhost:${MIRANDA_PORT:-3847}/complete \
+  -H "Content-Type: application/json" \
+  -d "{\"session\": \"$TMUX\", \"status\": \"success\", \"pr\": \"<PR-URL>\"}"
+```
+
+**On blocked** (needs human decision):
+```bash
+curl -sf -X POST http://localhost:${MIRANDA_PORT:-3847}/complete \
+  -H "Content-Type: application/json" \
+  -d "{\"session\": \"$TMUX\", \"status\": \"blocked\", \"blocker\": \"<reason>\"}"
+```
+
+**On error** (failure, safety limit hit):
+```bash
+curl -sf -X POST http://localhost:${MIRANDA_PORT:-3847}/complete \
+  -H "Content-Type: application/json" \
+  -d "{\"session\": \"$TMUX\", \"status\": \"error\", \"error\": \"<reason>\"}"
+```
+
+Note: `-sf` makes curl silent and fail on HTTP errors. If Miranda is not running (local development), curl will fail silently and the skill continues normally.
+
 ## Example
 
 ```
@@ -155,10 +182,37 @@ Pushing...
 To github.com:org/repo.git
    f1e2d3c..a1b2c3d  ba/abc-123 -> ba/abc-123
 
+Signaling blocked (comment 4 needs decision)...
+
 Done.
   Addressed: 2 comments
   Skipped: 1 (bot comment)
-  Needs decision: 1 (comment about validate() function)
+  Blocked: 1 (comment about validate() function)
 
 PR: https://github.com/org/repo/pull/42
+```
+
+### Success Example (no blockers)
+
+```
+$ /notes 43
+
+Checking out PR #43...
+Fetching comments...
+Found 2 comments:
+  1. [human] "Fix typo in variable name" (line 12)
+  2. [human] "Add logging here" (line 45)
+
+Addressing comment 1: Fix typo...
+Addressing comment 2: Add logging...
+Committing fixes...
+Pushing...
+
+Signaling success...
+
+Done.
+  Addressed: 2 comments
+  Blocked: 0
+
+PR: https://github.com/org/repo/pull/43
 ```
