@@ -1,4 +1,5 @@
 import type { Bot, Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import {
   spawnSession,
   killSession,
@@ -12,6 +13,7 @@ import {
   deleteSession,
   getAllSessions,
 } from "../state/sessions.js";
+import { scanProjects } from "../projects/scanner.js";
 import type { Session } from "../types.js";
 
 /**
@@ -19,6 +21,7 @@ import type { Session } from "../types.js";
  *
  * Commands implemented:
  * - /start - Welcome message
+ * - /projects - List projects with task counts
  * - /mouse <task-id> - Spawn a mouse session
  * - /status - List all sessions
  * - /stop <task-id> - Kill a session
@@ -26,6 +29,7 @@ import type { Session } from "../types.js";
  */
 export function registerCommands(bot: Bot<Context>): void {
   bot.command("start", handleStart);
+  bot.command("projects", handleProjects);
   bot.command("mouse", handleMouse);
   bot.command("status", handleStatus);
   bot.command("stop", handleStop);
@@ -43,6 +47,7 @@ async function handleStart(ctx: Context): Promise<void> {
 
 I give voice to the Primer. Commands:
 
+/projects - List projects with tasks
 /mouse <task-id> - Start a mouse on a task
 /status - Show active sessions
 /drummer - Run batch merge
@@ -53,6 +58,44 @@ I give voice to the Primer. Commands:
 _From The Diamond Age by Neal Stephenson_`,
     { parse_mode: "Markdown" }
   );
+}
+
+async function handleProjects(ctx: Context): Promise<void> {
+  const projects = await scanProjects();
+
+  if (projects.length === 0) {
+    await ctx.reply("*Projects*\n\n_No projects found with ba tasks_", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Build message with task counts
+  const lines: string[] = ["*Projects*", ""];
+  for (const project of projects) {
+    const counts: string[] = [];
+    if (project.openCount > 0) {
+      counts.push(`${project.openCount} open`);
+    }
+    if (project.inProgressCount > 0) {
+      counts.push(`${project.inProgressCount} in progress`);
+    }
+    const countStr = counts.length > 0 ? ` (${counts.join(", ")})` : "";
+    lines.push(`*${project.name}*${countStr}`);
+  }
+
+  // Build inline keyboard with buttons for each project
+  // Note: Telegram callback data has 64-byte limit, truncate long names
+  const keyboard = new InlineKeyboard();
+  for (const project of projects) {
+    const callbackName = project.name.slice(0, 50);
+    keyboard.text(project.name, `tasks:${callbackName}`).row();
+  }
+
+  await ctx.reply(lines.join("\n"), {
+    parse_mode: "Markdown",
+    reply_markup: keyboard,
+  });
 }
 
 async function handleMouse(ctx: Context): Promise<void> {

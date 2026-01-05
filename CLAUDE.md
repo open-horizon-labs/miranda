@@ -53,6 +53,7 @@ ALLOWED_USER_IDS=123,456    # Telegram user IDs (comma-separated)
 # Optional
 MIRANDA_PORT=3847           # HTTP port for hook notifications (default: 3847)
 SQLITE_PATH=./miranda.db    # SQLite database path
+PROJECTS_DIR=~/projects     # Directory to scan for ba projects (default: ~/projects)
 ```
 
 ## Project Structure
