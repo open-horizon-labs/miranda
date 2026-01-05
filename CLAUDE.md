@@ -80,8 +80,9 @@ src/
 | `/projects` | List projects on server with task counts |
 | `/tasks <project>` | List tasks for a project |
 | `/mouse <task>` | Start mouse skill for task |
-| `/status` | Show all active sessions |
 | `/drummer` | Run batch merge skill |
+| `/notes <pr-number>` | Address human PR feedback |
+| `/status` | Show all active sessions |
 | `/logs <task>` | Show recent output |
 | `/stop <task>` | Kill a session |
 | `/ssh` | Get SSH command for manual access |
