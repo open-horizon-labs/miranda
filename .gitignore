@@ -10,3 +10,6 @@ env
 
 # Superego
 .superego/
+
+# npm lock file (project uses pnpm)
+package-lock.json
