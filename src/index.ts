@@ -3,7 +3,7 @@ import { config, validateConfig } from "./config.js";
 import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback } from "./bot/commands.js";
 import { parseCallback, formatAnswer, buildQuestionKeyboard } from "./bot/keyboards.js";
 import { createHookServer } from "./hooks/server.js";
-import { sendKeys } from "./tmux/sessions.js";
+import { sendKeys, killSession } from "./tmux/sessions.js";
 import {
   getSession,
   setSession,
@@ -200,10 +200,16 @@ function handleCompletion(completion: CompletionNotification): void {
 
   const taskId = session.taskId;
   const chatId = session.chatId;
+  const tmuxName = session.tmuxName;
 
   // Remove session from tracking immediately - the skill is done regardless of
   // whether we successfully notify the user. Telegram delivery is best-effort.
   deleteSession(taskId);
+
+  // Kill the tmux session - the skill has signaled completion, no need to keep it alive
+  killSession(tmuxName).catch((err) => {
+    console.error(`Failed to kill tmux session ${tmuxName}:`, err);
+  });
 
   // Send notification to Telegram
   if (completion.status === "success") {
