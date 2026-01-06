@@ -132,6 +132,15 @@ export async function cloneAndInit(repoRef: string): Promise<CloneResult> {
     return { success: false, error: `Clone failed: ${message}` };
   }
 
+  // Verify the project directory exists and is accessible after clone
+  try {
+    await access(projectPath, constants.R_OK | constants.X_OK);
+  } catch {
+    return {
+      success: false,
+      error: `Project directory is not accessible after clone: ${projectPath}`,
+    };
+  }
   // Initialize tools with timeouts
   const initErrors: string[] = [];
   const initTimeout = 30000; // 30 second timeout for each init
