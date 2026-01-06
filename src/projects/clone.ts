@@ -9,15 +9,15 @@ const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 /**
- * Parse a repo reference into owner, repo, and clone URL.
+ * Parse a GitHub repo reference into owner, repo, and clone URL.
  *
  * Accepts:
  * - owner/repo (GitHub shorthand)
  * - https://github.com/owner/repo.git
  * - git@github.com:owner/repo.git
- * - Other full git URLs
+ * - Other full GitHub git URLs
  *
- * Returns null if the input is invalid.
+ * Returns null if the input is invalid or refers to a non-GitHub host.
  */
 export function parseRepoRef(
   input: string
