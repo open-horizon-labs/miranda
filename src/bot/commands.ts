@@ -14,7 +14,8 @@ import {
   deleteSession,
   getAllSessions,
 } from "../state/sessions.js";
-import { scanProjects } from "../projects/scanner.js";
+import { scanProjects, getProjectTasks, findProjectForTask } from "../projects/scanner.js";
+import { config } from "../config.js";
 import type { Session } from "../types.js";
 
 /**
@@ -44,6 +45,7 @@ export async function cleanupOrphanedSessions(): Promise<number> {
  * Commands implemented:
  * - /start - Welcome message
  * - /projects - List projects with task counts
+ * - /tasks <project> - List tasks for a project with inline selection
  * - /mouse <task-id> - Spawn a mouse session
  * - /status - List all sessions
  * - /stop <session> - Kill a session (task-id or full session name)
@@ -55,6 +57,7 @@ export async function cleanupOrphanedSessions(): Promise<number> {
 export function registerCommands(bot: Bot<Context>): void {
   bot.command("start", handleStart);
   bot.command("projects", handleProjects);
+  bot.command("tasks", handleTasks);
   bot.command("mouse", handleMouse);
   bot.command("status", handleStatus);
   bot.command("stop", handleStop);
@@ -75,6 +78,7 @@ async function handleStart(ctx: Context): Promise<void> {
 I give voice to the Primer. Commands:
 
 /projects - List projects with tasks
+/tasks <project> - List tasks for a project
 /mouse <task-id> - Start a mouse on a task
 /drummer - Run batch merge
 /notes <pr-number> - Address PR feedback
@@ -127,6 +131,123 @@ async function handleProjects(ctx: Context): Promise<void> {
   });
 }
 
+async function handleTasks(ctx: Context): Promise<void> {
+  const projectName = ctx.match?.toString().trim();
+  if (!projectName) {
+    await ctx.reply("Usage: /tasks <project-name>");
+    return;
+  }
+
+  const tasks = await getProjectTasks(projectName);
+
+  if (tasks.length === 0) {
+    await ctx.reply(`*Tasks for ${projectName}*\n\n_No open or in-progress tasks_`, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Build inline keyboard with task buttons
+  // Callback data format: "mouse:<task-id>" (project auto-discovered)
+  const keyboard = new InlineKeyboard();
+  for (const task of tasks) {
+    const statusEmoji = task.status === "in_progress" ? "🔄" : "📋";
+    // Truncate title to fit in button (leaving room for ID)
+    const maxTitleLen = 30;
+    const displayTitle = task.title.length > maxTitleLen
+      ? task.title.slice(0, maxTitleLen - 1) + "…"
+      : task.title;
+    keyboard.text(`${statusEmoji} ${task.id}: ${displayTitle}`, `mouse:${task.id}`).row();
+  }
+
+  await ctx.reply(`*Tasks for ${projectName}*`, {
+    parse_mode: "Markdown",
+    reply_markup: keyboard,
+  });
+}
+
+/**
+ * Handle tasks callback from /projects - external entry point for callback handler
+ */
+export async function handleTasksCallback(
+  projectName: string,
+  sendMessage: (text: string, options?: { parse_mode?: "Markdown" | "MarkdownV2" | "HTML"; reply_markup?: InlineKeyboard }) => Promise<void>
+): Promise<void> {
+  const tasks = await getProjectTasks(projectName);
+
+  if (tasks.length === 0) {
+    await sendMessage(`*Tasks for ${projectName}*\n\n_No open or in-progress tasks_`, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Build inline keyboard with task buttons
+  const keyboard = new InlineKeyboard();
+  for (const task of tasks) {
+    const statusEmoji = task.status === "in_progress" ? "🔄" : "📋";
+    const maxTitleLen = 30;
+    const displayTitle = task.title.length > maxTitleLen
+      ? task.title.slice(0, maxTitleLen - 1) + "…"
+      : task.title;
+    keyboard.text(`${statusEmoji} ${task.id}: ${displayTitle}`, `mouse:${task.id}`).row();
+  }
+
+  await sendMessage(`*Tasks for ${projectName}*`, {
+    parse_mode: "Markdown",
+    reply_markup: keyboard,
+  });
+}
+
+/**
+ * Handle mouse callback from /tasks - spawns mouse for selected task
+ */
+export async function handleMouseCallback(
+  taskId: string,
+  chatId: number,
+  sendMessage: (text: string, options?: { parse_mode?: "Markdown" | "MarkdownV2" | "HTML" }) => Promise<void>
+): Promise<void> {
+  // Check if session already exists
+  const existing = getSession(taskId);
+  if (existing) {
+    await sendMessage(`Session for ${taskId} already exists (${existing.status})`);
+    return;
+  }
+
+  // Auto-discover project from task ID
+  const projectPath = await findProjectForTask(taskId);
+  if (!projectPath) {
+    await sendMessage(`Task \`${taskId}\` not found in any project`, { parse_mode: "Markdown" });
+    return;
+  }
+
+  await sendMessage(`Starting mouse for \`${taskId}\`...`, { parse_mode: "Markdown" });
+
+  try {
+    const tmuxName = await spawnSession("mouse", taskId, chatId, projectPath);
+
+    const session: Session = {
+      taskId,
+      tmuxName,
+      skill: "mouse",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(taskId, session);
+
+    await sendMessage(
+      `Mouse running for \`${taskId}\`
+Branch: \`ba/${taskId}\`
+Session: \`${tmuxName}\``,
+      { parse_mode: "Markdown" }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await sendMessage(`Failed to start mouse: ${message}`);
+  }
+}
+
 async function handleMouse(ctx: Context): Promise<void> {
   const taskId = ctx.match?.toString().trim();
   if (!taskId) {
@@ -147,10 +268,17 @@ async function handleMouse(ctx: Context): Promise<void> {
     return;
   }
 
+  // Auto-discover project from task ID
+  const projectPath = await findProjectForTask(taskId);
+  if (!projectPath) {
+    await ctx.reply(`Task \`${taskId}\` not found in any project`, { parse_mode: "Markdown" });
+    return;
+  }
+
   await ctx.reply(`Starting mouse for \`${taskId}\`...`, { parse_mode: "Markdown" });
 
   try {
-    const tmuxName = await spawnSession("mouse", taskId, chatId);
+    const tmuxName = await spawnSession("mouse", taskId, chatId, projectPath ?? undefined);
 
     const session: Session = {
       taskId,

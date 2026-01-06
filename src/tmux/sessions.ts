@@ -103,15 +103,17 @@ function getSkillConfig(skill: SkillType, taskId: string | undefined): SkillConf
 /**
  * Spawn a new tmux session running a Claude skill
  *
- * @param skill - The skill to run ("mouse" or "drummer")
- * @param taskId - The task ID (required for mouse, ignored for drummer)
+ * @param skill - The skill to run ("mouse", "drummer", or "notes")
+ * @param taskId - The task ID (required for mouse/notes, ignored for drummer)
  * @param chatId - Telegram chat ID for notifications (unused here, tracked by caller)
+ * @param projectPath - Working directory for the tmux session (optional, falls back to config.defaultProject)
  * @returns The tmux session name
  */
 export async function spawnSession(
   skill: SkillType,
   taskId: string | undefined,
-  _chatId: number
+  _chatId: number,
+  projectPath?: string
 ): Promise<string> {
   // _chatId is tracked by the caller (state/db.ts), not used in tmux command
 
@@ -131,10 +133,11 @@ export async function spawnSession(
   // -d: detached (don't attach to it)
   // -s: session name
   // -e: set TMUX_SESSION env var for notify-miranda.sh hook to identify session
-  // -c: start directory (if MIRANDA_DEFAULT_PROJECT is set)
+  // -c: start directory (projectPath or config.defaultProject)
   let startDirFlag = "";
-  if (config.defaultProject) {
-    const escapedPath = config.defaultProject.replace(/'/g, "'\\''");
+  const workDir = projectPath ?? config.defaultProject;
+  if (workDir) {
+    const escapedPath = workDir.replace(/'/g, "'\\''");
     startDirFlag = ` -c '${escapedPath}'`;
   }
   // Pass both TMUX_SESSION (for hook to identify session) and MIRANDA_PORT (for completion signaling)

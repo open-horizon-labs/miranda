@@ -85,3 +85,88 @@ async function countTasks(
 
   return { open, inProgress };
 }
+
+export interface TaskInfo {
+  id: string;
+  title: string;
+  status: string;
+}
+
+/**
+ * Get tasks for a specific project by name.
+ * Returns open and in_progress tasks only.
+ */
+export async function getProjectTasks(projectName: string): Promise<TaskInfo[]> {
+  // Prevent path traversal - projectName should be a simple directory name
+  if (projectName.includes('/') || projectName.includes('\\') || projectName.includes('..')) {
+    return [];
+  }
+  const projectPath = join(config.projectsDir, projectName);
+  const issuesPath = join(projectPath, ".ba", "issues.jsonl");
+  const tasks: TaskInfo[] = [];
+
+  try {
+    const content = await readFile(issuesPath, "utf-8");
+    const lines = content.trim().split("\n").filter(Boolean);
+
+    for (const line of lines) {
+      try {
+        const task = JSON.parse(line) as { id: string; title: string; status: string };
+        if (task.status === "open" || task.status === "in_progress") {
+          tasks.push({
+            id: task.id,
+            title: task.title,
+            status: task.status,
+          });
+        }
+      } catch {
+        // Skip invalid JSON lines
+      }
+    }
+  } catch {
+    // File read error - return empty
+  }
+
+  return tasks;
+}
+
+/**
+ * Find the project that contains a task by scanning all projects.
+ * Task IDs are unique UUIDs across all projects.
+ * Returns the project path if found, null otherwise.
+ */
+export async function findProjectForTask(taskId: string): Promise<string | null> {
+  const projectsDir = config.projectsDir;
+
+  let entries: string[];
+  try {
+    entries = await readdir(projectsDir);
+  } catch {
+    return null;
+  }
+
+  for (const entry of entries) {
+    const projectPath = join(projectsDir, entry);
+    const issuesPath = join(projectPath, ".ba", "issues.jsonl");
+
+    try {
+      const content = await readFile(issuesPath, "utf-8");
+      const lines = content.trim().split("\n").filter(Boolean);
+
+      for (const line of lines) {
+        try {
+          const task = JSON.parse(line) as { id: string };
+          if (task.id === taskId) {
+            return projectPath;
+          }
+        } catch {
+          // Skip invalid JSON lines
+        }
+      }
+    } catch {
+      // File read error - continue to next project
+    }
+  }
+
+  return null;
+}

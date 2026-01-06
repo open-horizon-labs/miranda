@@ -1,6 +1,6 @@
 import { Bot } from "grammy";
 import { config, validateConfig } from "./config.js";
-import { registerCommands, cleanupOrphanedSessions } from "./bot/commands.js";
+import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback } from "./bot/commands.js";
 import { parseCallback, formatAnswer, buildQuestionKeyboard } from "./bot/keyboards.js";
 import { createHookServer } from "./hooks/server.js";
 import { sendKeys } from "./tmux/sessions.js";
@@ -35,6 +35,7 @@ registerCommands(bot);
 // Callback query handler for inline keyboards
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
+  const chatId = ctx.chat?.id;
 
   // Handle cleanup callbacks (not session-related)
   if (data === "cleanup:confirm") {
@@ -59,6 +60,36 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.editMessageText("*Cleanup*\n\n_Cancelled_", {
       parse_mode: "Markdown",
     });
+    return;
+  }
+
+  // Handle tasks:<project> callback from /projects
+  if (data.startsWith("tasks:")) {
+    const projectName = data.slice(6); // Remove "tasks:" prefix
+    await ctx.answerCallbackQuery();
+    await handleTasksCallback(
+      projectName,
+      async (text, options) => {
+        await ctx.reply(text, options);
+      }
+    );
+    return;
+  }
+
+  // Handle mouse:<task-id> callback from /tasks
+  if (data.startsWith("mouse:")) {
+    const taskId = data.slice(6); // Remove "mouse:" prefix
+    await ctx.answerCallbackQuery({ text: `Starting mouse for ${taskId}...` });
+    if (!chatId) {
+      return;
+    }
+    await handleMouseCallback(
+      taskId,
+      chatId,
+      async (text, options) => {
+        await ctx.reply(text, options);
+      }
+    );
     return;
   }
 
