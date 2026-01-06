@@ -117,32 +117,28 @@ Same as mouse skill:
 - **Blocked**: Comment requires human decision - report and stop
 - **Safety**: Max 10 task iterations (prevent runaway)
 
-## Completion Signaling
+## Completion Signaling (MANDATORY)
 
-Signal completion to Miranda at ALL exit points. Use `$TMUX_SESSION` (set by Miranda when spawning the session):
+**CRITICAL: You MUST signal completion when done.** This is the LAST thing you do.
 
-**On success** (all comments addressed, pushed):
 ```bash
-curl -sf -X POST http://localhost:${MIRANDA_PORT:-3847}/complete \
+# On success:
+curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
   -H "Content-Type: application/json" \
   -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\", \"pr\": \"<PR-URL>\"}"
-```
 
-**On blocked** (needs human decision):
-```bash
-curl -sf -X POST http://localhost:${MIRANDA_PORT:-3847}/complete \
+# On blocked (needs human):
+curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
   -H "Content-Type: application/json" \
   -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"blocked\", \"blocker\": \"<reason>\"}"
-```
 
-**On error** (failure, safety limit hit):
-```bash
-curl -sf -X POST http://localhost:${MIRANDA_PORT:-3847}/complete \
+# On error:
+curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
   -H "Content-Type: application/json" \
   -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"<reason>\"}"
 ```
 
-Note: `-sf` makes curl silent and fail on HTTP errors. If Miranda is not running (local development), curl will fail silently and the skill continues normally.
+**If you don't signal, Miranda won't know you're done and the session becomes orphaned.**
 
 ## Example
 

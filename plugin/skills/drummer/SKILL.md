@@ -72,22 +72,19 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
      Squash merge can lose .ba/ changes during conflict resolution. This step ensures
      all merged tasks end in closed state regardless of what the merge preserved.
 
-6. Report results and signal completion:
-   - On success:
-     ```bash
-     curl -sf -X POST "http://localhost:${MIRANDA_PORT:-3847}/complete" \
-       -H "Content-Type: application/json" \
-       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}" || \
-       echo "Warning: Failed to signal completion to Miranda" >&2
-     ```
-   - On error:
-     ```bash
-     ERROR_MSG=$(printf '%s' "<error message>" | jq -Rs .)
-     curl -sf -X POST "http://localhost:${MIRANDA_PORT:-3847}/complete" \
-       -H "Content-Type: application/json" \
-       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": $ERROR_MSG}" || \
-       echo "Warning: Failed to signal error to Miranda" >&2
-     ```
+6. **Signal completion (MANDATORY)** - This is the LAST thing you do:
+   ```bash
+   # On success:
+   curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
+     -H "Content-Type: application/json" \
+     -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}"
+
+   # On error:
+   curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
+     -H "Content-Type: application/json" \
+     -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"<reason>\"}"
+   ```
+   **If you don't signal, Miranda won't know you're done and the session becomes orphaned.**
 
 ## Stacked PRs
 

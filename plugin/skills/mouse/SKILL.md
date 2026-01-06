@@ -137,34 +137,25 @@ Everything before is autonomous.
 - **Blocked**: A task needs human decision - stop and report
 - **Safety**: Max 10 task iterations (prevent runaway)
 
-## Completion Signaling
+## Completion Signaling (MANDATORY)
 
-When running under Miranda (detected by `$MIRANDA_PORT` being set), signal completion at every exit point:
+**CRITICAL: You MUST signal completion when done.** If `$MIRANDA_PORT` is set, you are running under Miranda and MUST curl the completion endpoint. This is the LAST thing you do.
 
 ```bash
-# On success (after PR created):
+# Run this as your FINAL action:
 curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
   -H "Content-Type: application/json" \
   -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\", \"pr\": \"<pr-url>\"}"
-
-# On error (unrecoverable failure):
-curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-  -H "Content-Type: application/json" \
-  -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"<reason>\"}"
-
-# On blocked (needs human decision):
-curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-  -H "Content-Type: application/json" \
-  -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"Blocked: <reason>\"}"
 ```
 
-**When to signal:**
-- After PR is created and CodeRabbit review passes → success with PR URL
-- If any step fails unrecoverably → error with reason
-- If task needs human decision → error with "Blocked: ..." message
-- If safety limit (10 iterations) reached → error with "Safety limit reached"
+**Signal based on outcome:**
+| Outcome | Status | Payload |
+|---------|--------|---------|
+| PR created & reviewed | `success` | `"pr": "<url>"` |
+| Unrecoverable failure | `error` | `"error": "<reason>"` |
+| Needs human decision | `error` | `"error": "Blocked: <reason>"` |
 
-**Note:** Only signal if `$MIRANDA_PORT` is set. When running locally without Miranda, skip the curl.
+**If you don't signal, Miranda won't know you're done and the session becomes orphaned.**
 
 ## Example
 
