@@ -15,6 +15,7 @@ import {
   getAllSessions,
 } from "../state/sessions.js";
 import { scanProjects, getProjectTasks, findProjectForTask, type TaskInfo } from "../projects/scanner.js";
+import { cloneAndInit } from "../projects/clone.js";
 import { config } from "../config.js";
 import type { Session } from "../types.js";
 
@@ -78,6 +79,7 @@ export async function cleanupOrphanedSessions(): Promise<number> {
  * - /cleanup - Remove orphaned tmux sessions
  * - /drummer - Run batch merge
  * - /notes <pr-number> - Address PR feedback
+ * - /newproject <repo> - Clone repo and init ba/sg/wm
  * - /logs, /ssh - Stubs for future implementation
  */
 export function registerCommands(bot: Bot<Context>): void {
@@ -90,6 +92,7 @@ export function registerCommands(bot: Bot<Context>): void {
   bot.command("cleanup", handleCleanup);
   bot.command("drummer", handleDrummer);
   bot.command("notes", handleNotes);
+  bot.command("newproject", handleNewProject);
   bot.command("logs", handleLogs);
   bot.command("ssh", handleSsh);
 
@@ -105,6 +108,7 @@ I give voice to the Primer. Commands:
 
 /projects - List projects with tasks
 /tasks <project> - List tasks for a project
+/newproject <repo> - Clone and init new project
 /mouse <task-id> - Start a mouse on a task
 /drummer - Run batch merge
 /notes <pr-number> - Address PR feedback
@@ -532,6 +536,50 @@ Addressing human feedback...`,
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await ctx.reply(`Failed to start notes: ${message}`);
+  }
+}
+
+async function handleNewProject(ctx: Context): Promise<void> {
+  const repoRef = ctx.match?.toString().trim();
+  if (!repoRef) {
+    await ctx.reply(
+      `Usage: /newproject <repo>
+
+**GitHub repositories only**
+
+Examples:
+  /newproject owner/repo
+  /newproject https://github.com/owner/repo
+  /newproject git@github.com:owner/repo.git`
+    );
+    return;
+  }
+
+  await ctx.reply(`Cloning \`${repoRef}\`...`, { parse_mode: "Markdown" });
+
+  const result = await cloneAndInit(repoRef);
+
+  if (!result.success) {
+    await ctx.reply(`Failed: ${result.error}`);
+    return;
+  }
+
+  if (result.error) {
+    // Partial success - cloned but some init failed
+    await ctx.reply(
+      `Cloned \`${result.repoName}\` to \`${result.projectPath}\`
+
+⚠️ ${result.error}`,
+      { parse_mode: "Markdown" }
+    );
+  } else {
+    await ctx.reply(
+      `Project \`${result.repoName}\` ready
+
+Path: \`${result.projectPath}\`
+Initialized: ba, sg, wm`,
+      { parse_mode: "Markdown" }
+    );
   }
 }
 
