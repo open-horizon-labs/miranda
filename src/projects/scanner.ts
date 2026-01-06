@@ -97,6 +97,10 @@ export interface TaskInfo {
  * Returns open and in_progress tasks only.
  */
 export async function getProjectTasks(projectName: string): Promise<TaskInfo[]> {
+  // Prevent path traversal - projectName should be a simple directory name
+  if (projectName.includes('/') || projectName.includes('\\') || projectName.includes('..')) {
+    return [];
+  }
   const projectPath = join(config.projectsDir, projectName);
   const issuesPath = join(projectPath, ".ba", "issues.jsonl");
   const tasks: TaskInfo[] = [];
