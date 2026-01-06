@@ -14,9 +14,35 @@ import {
   deleteSession,
   getAllSessions,
 } from "../state/sessions.js";
-import { scanProjects, getProjectTasks, findProjectForTask } from "../projects/scanner.js";
+import { scanProjects, getProjectTasks, findProjectForTask, type TaskInfo } from "../projects/scanner.js";
 import { config } from "../config.js";
 import type { Session } from "../types.js";
+
+/**
+ * Build inline keyboard with task buttons for a project.
+ * Shared by handleTasks command and handleTasksCallback.
+ */
+export function buildTaskKeyboard(
+  tasks: TaskInfo[],
+  projectName: string
+): { message: string; keyboard: InlineKeyboard } {
+  const keyboard = new InlineKeyboard();
+  for (const task of tasks) {
+    const statusEmoji = task.status === "in_progress" ? "🔄" : "📋";
+    // Truncate title to fit in button (leaving room for ID)
+    const maxTitleLen = 30;
+    const displayTitle =
+      task.title.length > maxTitleLen
+        ? task.title.slice(0, maxTitleLen - 1) + "…"
+        : task.title;
+    keyboard.text(`${statusEmoji} ${task.id}: ${displayTitle}`, `mouse:${task.id}`).row();
+  }
+
+  return {
+    message: `*Tasks for ${projectName}*`,
+    keyboard,
+  };
+}
 
 /**
  * Get orphaned tmux sessions (in tmux but not tracked in state).
@@ -147,20 +173,8 @@ async function handleTasks(ctx: Context): Promise<void> {
     return;
   }
 
-  // Build inline keyboard with task buttons
-  // Callback data format: "mouse:<task-id>" (project auto-discovered)
-  const keyboard = new InlineKeyboard();
-  for (const task of tasks) {
-    const statusEmoji = task.status === "in_progress" ? "🔄" : "📋";
-    // Truncate title to fit in button (leaving room for ID)
-    const maxTitleLen = 30;
-    const displayTitle = task.title.length > maxTitleLen
-      ? task.title.slice(0, maxTitleLen - 1) + "…"
-      : task.title;
-    keyboard.text(`${statusEmoji} ${task.id}: ${displayTitle}`, `mouse:${task.id}`).row();
-  }
-
-  await ctx.reply(`*Tasks for ${projectName}*`, {
+  const { message, keyboard } = buildTaskKeyboard(tasks, projectName);
+  await ctx.reply(message, {
     parse_mode: "Markdown",
     reply_markup: keyboard,
   });
@@ -182,18 +196,8 @@ export async function handleTasksCallback(
     return;
   }
 
-  // Build inline keyboard with task buttons
-  const keyboard = new InlineKeyboard();
-  for (const task of tasks) {
-    const statusEmoji = task.status === "in_progress" ? "🔄" : "📋";
-    const maxTitleLen = 30;
-    const displayTitle = task.title.length > maxTitleLen
-      ? task.title.slice(0, maxTitleLen - 1) + "…"
-      : task.title;
-    keyboard.text(`${statusEmoji} ${task.id}: ${displayTitle}`, `mouse:${task.id}`).row();
-  }
-
-  await sendMessage(`*Tasks for ${projectName}*`, {
+  const { message, keyboard } = buildTaskKeyboard(tasks, projectName);
+  await sendMessage(message, {
     parse_mode: "Markdown",
     reply_markup: keyboard,
   });
