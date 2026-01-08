@@ -81,11 +81,12 @@ src/
 | `/projects` | List projects on server with task counts |
 | `/update` | Pull all clean projects (skips dirty/active) |
 | `/selfupdate` | Pull and rebuild Miranda |
+| `/restart` | Graceful restart |
 | `/tasks <project>` | List tasks for a project |
 | `/newproject <repo>` | Clone GitHub repo and init ba/sg |
 | `/mouse <task>` | Start mouse skill for task |
-| `/drummer` | Run batch merge skill |
-| `/notes <pr-number>` | Address human PR feedback |
+| `/drummer <project>` | Run batch merge skill |
+| `/notes <project> <pr>` | Address human PR feedback |
 | `/status` | Show all active sessions |
 | `/logs <task>` | Show recent output |
 | `/stop <task>` | Kill a session |
