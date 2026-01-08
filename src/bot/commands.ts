@@ -15,6 +15,7 @@ import {
   setSession,
   deleteSession,
   getAllSessions,
+  setRestartChatId,
 } from "../state/sessions.js";
 import { scanProjects, getProjectTasks, findProjectForTask, isRepoDirty, pullProject, updateProjectIfClean, selfUpdate, type TaskInfo, type UpdateResult, type SelfUpdateResult } from "../projects/scanner.js";
 import { cloneAndInit } from "../projects/clone.js";
@@ -93,6 +94,61 @@ export async function cleanupOrphanedSessions(): Promise<number> {
 }
 
 /**
+ * Discover orphaned tmux sessions on startup and repopulate state.
+ * Creates Session objects with status='running' for any tmux sessions
+ * that aren't tracked in state (e.g., after a restart).
+ * Returns the count of sessions discovered.
+ */
+export async function discoverOrphanedSessions(): Promise<number> {
+  const orphaned = await getOrphanedSessions();
+  let discovered = 0;
+
+  for (const tmux of orphaned) {
+    // Parse tmux session name to extract skill and taskId
+    // Patterns:
+    // - mouse-<taskId>
+    // - <project>-drummer-<timestamp>
+    // - <project>-notes-<pr>
+    let skill: "mouse" | "drummer" | "notes";
+    let taskId: string;
+
+    if (tmux.name.startsWith("mouse-")) {
+      skill = "mouse";
+      taskId = tmux.name.slice(6); // Remove "mouse-" prefix
+    } else if (/-drummer-\d+$/.test(tmux.name)) {
+      skill = "drummer";
+      taskId = tmux.name; // Use full name as ID for drummer
+    } else if (/-notes-\d+$/.test(tmux.name)) {
+      skill = "notes";
+      taskId = tmux.name; // Use full name as ID for notes
+    } else {
+      // Unknown pattern, skip
+      continue;
+    }
+
+    // Create session with unknown status (we don't know if it's waiting for input)
+    const session: Session = {
+      taskId,
+      tmuxName: tmux.name,
+      skill,
+      status: "running", // Assume running, user can check /status
+      startedAt: new Date(parseInt(tmux.created, 10) * 1000), // tmux created is unix timestamp
+      chatId: 0, // Unknown - can't send notifications to this session
+    };
+    setSession(taskId, session);
+    discovered++;
+  }
+
+  return discovered;
+}
+
+/** Shutdown function type for /restart command */
+export type ShutdownFn = () => Promise<void>;
+
+// Stored shutdown function (set by registerCommands)
+let shutdownFn: ShutdownFn | undefined;
+
+/**
  * Register command handlers on the bot instance.
  *
  * Commands implemented:
@@ -107,9 +163,14 @@ export async function cleanupOrphanedSessions(): Promise<number> {
  * - /notes <project> <pr-number> - Address PR feedback
  * - /newproject <repo> - Clone repo and init ba/sg/wm
  * - /update - Pull all clean projects
+ * - /selfupdate - Pull and rebuild Miranda
+ * - /restart - Graceful restart
  * - /logs, /ssh - Stubs for future implementation
  */
-export function registerCommands(bot: Bot<Context>): void {
+export function registerCommands(bot: Bot<Context>, shutdown: ShutdownFn): void {
+  // Store shutdown function for handleRestart
+  shutdownFn = shutdown;
+
   bot.command("start", handleStart);
   bot.command("projects", handleProjects);
   bot.command("tasks", handleTasks);
@@ -122,6 +183,7 @@ export function registerCommands(bot: Bot<Context>): void {
   bot.command("newproject", handleNewProject);
   bot.command("update", handleUpdate);
   bot.command("selfupdate", handleSelfUpdate);
+  bot.command("restart", handleRestart);
   bot.command("logs", handleLogs);
   bot.command("ssh", handleSsh);
 
@@ -140,6 +202,7 @@ I give voice to the Primer. Commands:
 /newproject <repo> - Clone and init new project
 /update - Pull all clean projects
 /selfupdate - Pull and rebuild Miranda
+/restart - Graceful restart
 /mouse <task-id> - Start a mouse on a task
 /drummer <project> - Run batch merge for project
 /notes <project> <pr> - Address PR feedback
@@ -802,9 +865,56 @@ async function handleSelfUpdate(ctx: Context): Promise<void> {
   }
 
   lines.push("");
-  lines.push("Build completed. Restart Miranda to apply changes.");
+  lines.push("Build completed. Run /restart to apply changes.");
 
   await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+}
+
+async function handleRestart(ctx: Context): Promise<void> {
+  const chatId = ctx.chat?.id;
+  if (!chatId) {
+    await ctx.reply("Error: Could not determine chat ID");
+    return;
+  }
+
+  // Check for active sessions
+  const sessions = getAllSessions();
+  const activeSessions = sessions.filter(
+    (s) => s.status === "running" || s.status === "waiting_input"
+  );
+
+  if (activeSessions.length > 0) {
+    const lines = [
+      "*Restart Warning*",
+      "",
+      `${activeSessions.length} active session(s) found:`,
+      "",
+    ];
+    for (const s of activeSessions) {
+      const statusEmoji = s.status === "waiting_input" ? "⏸️" : "🔄";
+      lines.push(`  ${statusEmoji} \`${s.taskId}\``);
+    }
+    lines.push("");
+    lines.push("Sessions will continue running in tmux.");
+    lines.push("After restart, run /status to re-sync.");
+    lines.push("");
+    lines.push("_Restarting..._");
+
+    await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+  } else {
+    await ctx.reply("_Restarting Miranda..._", { parse_mode: "Markdown" });
+  }
+
+  // Store chat ID for "back online" message after restart
+  setRestartChatId(chatId);
+
+  // Graceful shutdown (process.exit will be called by shutdownFn)
+  if (shutdownFn) {
+    await shutdownFn();
+  } else {
+    // Fallback if shutdown function wasn't set (shouldn't happen)
+    await ctx.reply("Error: Shutdown function not available");
+  }
 }
 
 async function handleNewProject(ctx: Context): Promise<void> {
