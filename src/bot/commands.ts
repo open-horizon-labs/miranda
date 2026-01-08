@@ -77,7 +77,7 @@ export async function cleanupOrphanedSessions(): Promise<number> {
  * - /status - List all sessions
  * - /stop <session> - Kill a session (task-id or full session name)
  * - /cleanup - Remove orphaned tmux sessions
- * - /drummer - Run batch merge
+ * - /drummer <project> - Run batch merge for a project
  * - /notes <pr-number> - Address PR feedback
  * - /newproject <repo> - Clone repo and init ba/sg/wm
  * - /update - Pull all clean projects
@@ -112,7 +112,7 @@ I give voice to the Primer. Commands:
 /tasks <project> - List tasks for a project
 /newproject <repo> - Clone and init new project
 /mouse <task-id> - Start a mouse on a task
-/drummer - Run batch merge
+/drummer <project> - Run batch merge for project
 /notes <pr-number> - Address PR feedback
 /status - Show active sessions
 /stop <session> - Stop a session
@@ -482,9 +482,25 @@ async function handleCleanup(ctx: Context): Promise<void> {
 }
 
 async function handleDrummer(ctx: Context): Promise<void> {
+  const projectName = ctx.match?.toString().trim();
+  if (!projectName) {
+    await ctx.reply("Usage: /drummer <project>");
+    return;
+  }
+
   const chatId = ctx.chat?.id;
   if (!chatId) {
     await ctx.reply("Error: Could not determine chat ID");
+    return;
+  }
+
+  // Validate project exists
+  const projects = await scanProjects();
+  const project = projects.find((p) => p.name === projectName);
+  if (!project) {
+    await ctx.reply(`Project \`${projectName}\` not found in PROJECTS_DIR`, {
+      parse_mode: "Markdown",
+    });
     return;
   }
 
@@ -501,10 +517,12 @@ async function handleDrummer(ctx: Context): Promise<void> {
     return;
   }
 
-  await ctx.reply("Starting drummer batch review...");
+  await ctx.reply(`Starting drummer for \`${projectName}\`...`, {
+    parse_mode: "Markdown",
+  });
 
   try {
-    const tmuxName = await spawnSession("drummer", undefined, chatId);
+    const tmuxName = await spawnSession("drummer", undefined, chatId, project.path);
 
     // Use tmuxName as the session key since drummer has no task ID
     const session: Session = {
@@ -518,7 +536,7 @@ async function handleDrummer(ctx: Context): Promise<void> {
     setSession(tmuxName, session);
 
     await ctx.reply(
-      `Drummer running
+      `Drummer running for \`${projectName}\`
 Session: \`${tmuxName}\`
 
 Reviewing PRs with \`drummer-merge\` label...`,
