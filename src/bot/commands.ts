@@ -14,7 +14,7 @@ import {
   deleteSession,
   getAllSessions,
 } from "../state/sessions.js";
-import { scanProjects, getProjectTasks, findProjectForTask, type TaskInfo } from "../projects/scanner.js";
+import { scanProjects, getProjectTasks, findProjectForTask, isRepoDirty, pullProject, type TaskInfo, type UpdateResult } from "../projects/scanner.js";
 import { cloneAndInit } from "../projects/clone.js";
 import { config } from "../config.js";
 import type { Session } from "../types.js";
@@ -80,6 +80,7 @@ export async function cleanupOrphanedSessions(): Promise<number> {
  * - /drummer - Run batch merge
  * - /notes <pr-number> - Address PR feedback
  * - /newproject <repo> - Clone repo and init ba/sg/wm
+ * - /update - Pull all clean projects
  * - /logs, /ssh - Stubs for future implementation
  */
 export function registerCommands(bot: Bot<Context>): void {
@@ -93,6 +94,7 @@ export function registerCommands(bot: Bot<Context>): void {
   bot.command("drummer", handleDrummer);
   bot.command("notes", handleNotes);
   bot.command("newproject", handleNewProject);
+  bot.command("update", handleUpdate);
   bot.command("logs", handleLogs);
   bot.command("ssh", handleSsh);
 
@@ -537,6 +539,103 @@ Addressing human feedback...`,
     const message = error instanceof Error ? error.message : String(error);
     await ctx.reply(`Failed to start notes: ${message}`);
   }
+}
+
+async function handleUpdate(ctx: Context): Promise<void> {
+  await ctx.reply("Updating projects...");
+
+  const projects = await scanProjects();
+  if (projects.length === 0) {
+    await ctx.reply("*Update*\n\n_No projects found_", { parse_mode: "Markdown" });
+    return;
+  }
+
+  // Get active sessions to check for projects with running tasks
+  const sessions = getAllSessions();
+  const activeTaskIds = new Set(
+    sessions
+      .filter((s) => s.status === "running" || s.status === "waiting_input")
+      .map((s) => s.taskId)
+  );
+
+  const results: UpdateResult[] = [];
+
+  for (const project of projects) {
+    // Check if project has any active tasks
+    const projectTasks = await getProjectTasks(project.name);
+    const hasActiveTask = projectTasks.some((t) => activeTaskIds.has(t.id));
+
+    if (hasActiveTask) {
+      results.push({ name: project.name, status: "skipped_active" });
+      continue;
+    }
+
+    // Check if repo is dirty
+    const dirty = await isRepoDirty(project.path);
+    if (dirty) {
+      results.push({ name: project.name, status: "skipped_dirty" });
+      continue;
+    }
+
+    // Pull the project
+    const pullResult = await pullProject(project.path);
+    if (!pullResult.success) {
+      results.push({ name: project.name, status: "error", error: pullResult.error });
+    } else if (pullResult.commits === 0) {
+      results.push({ name: project.name, status: "already_current" });
+    } else {
+      results.push({ name: project.name, status: "updated", commits: pullResult.commits });
+    }
+  }
+
+  // Build response message grouped by status
+  const lines: string[] = ["*Update Results*", ""];
+
+  const updated = results.filter((r) => r.status === "updated");
+  if (updated.length > 0) {
+    lines.push("*Updated:*");
+    for (const r of updated) {
+      lines.push(`  ${r.name} (+${r.commits} commit${r.commits === 1 ? "" : "s"})`);
+    }
+    lines.push("");
+  }
+
+  const current = results.filter((r) => r.status === "already_current");
+  if (current.length > 0) {
+    lines.push("*Already current:*");
+    for (const r of current) {
+      lines.push(`  ${r.name}`);
+    }
+    lines.push("");
+  }
+
+  const skippedDirty = results.filter((r) => r.status === "skipped_dirty");
+  if (skippedDirty.length > 0) {
+    lines.push("*Skipped (dirty):*");
+    for (const r of skippedDirty) {
+      lines.push(`  ${r.name}`);
+    }
+    lines.push("");
+  }
+
+  const skippedActive = results.filter((r) => r.status === "skipped_active");
+  if (skippedActive.length > 0) {
+    lines.push("*Skipped (active task):*");
+    for (const r of skippedActive) {
+      lines.push(`  ${r.name}`);
+    }
+    lines.push("");
+  }
+
+  const errors = results.filter((r) => r.status === "error");
+  if (errors.length > 0) {
+    lines.push("*Errors:*");
+    for (const r of errors) {
+      lines.push(`  ${r.name}: ${r.error}`);
+    }
+  }
+
+  await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
 }
 
 async function handleNewProject(ctx: Context): Promise<void> {

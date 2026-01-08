@@ -78,6 +78,7 @@ src/
 | Command | Action |
 |---------|--------|
 | `/projects` | List projects on server with task counts |
+| `/update` | Pull all clean projects (skips dirty/active) |
 | `/tasks <project>` | List tasks for a project |
 | `/newproject <repo>` | Clone GitHub repo and init ba/sg/wm |
 | `/mouse <task>` | Start mouse skill for task |

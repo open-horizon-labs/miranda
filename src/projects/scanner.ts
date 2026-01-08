@@ -139,6 +139,76 @@ export async function getProjectTasks(projectName: string): Promise<TaskInfo[]> 
   return tasks;
 }
 
+export interface UpdateResult {
+  name: string;
+  status: "updated" | "already_current" | "skipped_dirty" | "skipped_active" | "error";
+  commits?: number;
+  error?: string;
+}
+
+/**
+ * Check if a project directory has uncommitted changes (dirty).
+ */
+export async function isRepoDirty(projectPath: string): Promise<boolean> {
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  try {
+    const { stdout } = await execAsync("git status --porcelain", {
+      cwd: projectPath,
+    });
+    return stdout.trim().length > 0;
+  } catch {
+    // If git command fails, treat as dirty to be safe
+    return true;
+  }
+}
+
+/**
+ * Pull latest changes for a project using git pull --ff-only.
+ * Returns the number of new commits pulled.
+ */
+export async function pullProject(projectPath: string): Promise<{ success: boolean; commits: number; error?: string }> {
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  try {
+    // Get current HEAD before pull
+    const { stdout: beforeHead } = await execAsync("git rev-parse HEAD", {
+      cwd: projectPath,
+    });
+    const before = beforeHead.trim();
+
+    // Fetch and pull
+    await execAsync("git fetch origin", { cwd: projectPath });
+    await execAsync("git pull --ff-only", { cwd: projectPath });
+
+    // Get HEAD after pull
+    const { stdout: afterHead } = await execAsync("git rev-parse HEAD", {
+      cwd: projectPath,
+    });
+    const after = afterHead.trim();
+
+    if (before === after) {
+      return { success: true, commits: 0 };
+    }
+
+    // Count commits between before and after
+    const { stdout: countOutput } = await execAsync(
+      `git rev-list --count ${before}..${after}`,
+      { cwd: projectPath }
+    );
+    const commits = parseInt(countOutput.trim(), 10) || 0;
+
+    return { success: true, commits };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, commits: 0, error: message };
+  }
+}
+
 /**
  * Find the project that contains a task by scanning all projects.
  * Task IDs are unique UUIDs across all projects.
