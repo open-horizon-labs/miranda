@@ -16,7 +16,7 @@ import {
   deleteSession,
   getAllSessions,
 } from "../state/sessions.js";
-import { scanProjects, getProjectTasks, findProjectForTask, isRepoDirty, pullProject, updateProjectIfClean, type TaskInfo, type UpdateResult } from "../projects/scanner.js";
+import { scanProjects, getProjectTasks, findProjectForTask, isRepoDirty, pullProject, updateProjectIfClean, selfUpdate, type TaskInfo, type UpdateResult, type SelfUpdateResult } from "../projects/scanner.js";
 import { cloneAndInit } from "../projects/clone.js";
 import { config } from "../config.js";
 import type { Session } from "../types.js";
@@ -121,6 +121,7 @@ export function registerCommands(bot: Bot<Context>): void {
   bot.command("notes", handleNotes);
   bot.command("newproject", handleNewProject);
   bot.command("update", handleUpdate);
+  bot.command("selfupdate", handleSelfUpdate);
   bot.command("logs", handleLogs);
   bot.command("ssh", handleSsh);
 
@@ -137,6 +138,8 @@ I give voice to the Primer. Commands:
 /projects - List projects with tasks
 /tasks <project> - List tasks for a project
 /newproject <repo> - Clone and init new project
+/update - Pull all clean projects
+/selfupdate - Pull and rebuild Miranda
 /mouse <task-id> - Start a mouse on a task
 /drummer <project> - Run batch merge for project
 /notes <project> <pr> - Address PR feedback
@@ -758,6 +761,48 @@ async function handleUpdate(ctx: Context): Promise<void> {
       lines.push(`  ${r.name}: ${r.error}`);
     }
   }
+
+  await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+}
+
+async function handleSelfUpdate(ctx: Context): Promise<void> {
+  await ctx.reply("Updating Miranda...");
+
+  const result = await selfUpdate();
+
+  if (!result.success) {
+    await ctx.reply(`*Self Update Failed*\n\n\`${result.error}\``, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  if (result.commits === 0) {
+    await ctx.reply("*Self Update*\n\nAlready up to date. Build completed.", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Build message with commit info
+  const lines: string[] = [
+    "*Self Update*",
+    "",
+    `Pulled ${result.commits} commit${result.commits === 1 ? "" : "s"}:`,
+    "",
+  ];
+
+  // Add commit messages (limit to 10 to avoid message size issues)
+  const displayCommits = result.commitMessages.slice(0, 10);
+  for (const commit of displayCommits) {
+    lines.push(`  \`${commit}\``);
+  }
+  if (result.commitMessages.length > 10) {
+    lines.push(`  _... and ${result.commitMessages.length - 10} more_`);
+  }
+
+  lines.push("");
+  lines.push("Build completed. Restart Miranda to apply changes.");
 
   await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
 }

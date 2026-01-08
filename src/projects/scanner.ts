@@ -280,3 +280,77 @@ export async function findProjectForTask(taskId: string): Promise<string | null>
 
   return null;
 }
+
+export interface SelfUpdateResult {
+  success: boolean;
+  commits: number;
+  commitMessages: string[];
+  error?: string;
+}
+
+/**
+ * Update Miranda itself: git pull --ff-only, pnpm install, pnpm build.
+ * Uses config.mirandaHome as the project directory.
+ */
+export async function selfUpdate(): Promise<SelfUpdateResult> {
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  const mirandaHome = config.mirandaHome;
+
+  try {
+    // Check if repo is dirty first
+    const dirty = await isRepoDirty(mirandaHome);
+    if (dirty) {
+      return { success: false, commits: 0, commitMessages: [], error: "Working directory is dirty" };
+    }
+
+    // Get current HEAD before pull
+    const { stdout: beforeHead } = await execAsync("git rev-parse HEAD", {
+      cwd: mirandaHome,
+    });
+    const before = beforeHead.trim();
+
+    // Fetch and pull
+    await execAsync("git fetch origin", { cwd: mirandaHome });
+    await execAsync("git pull --ff-only", { cwd: mirandaHome });
+
+    // Get HEAD after pull
+    const { stdout: afterHead } = await execAsync("git rev-parse HEAD", {
+      cwd: mirandaHome,
+    });
+    const after = afterHead.trim();
+
+    let commits = 0;
+    let commitMessages: string[] = [];
+
+    if (before !== after) {
+      // Count commits between before and after
+      const { stdout: countOutput } = await execAsync(
+        `git rev-list --count ${before}..${after}`,
+        { cwd: mirandaHome }
+      );
+      commits = parseInt(countOutput.trim(), 10) || 0;
+
+      // Get commit messages
+      const { stdout: logOutput } = await execAsync(
+        `git log --oneline ${before}..${after}`,
+        { cwd: mirandaHome }
+      );
+      commitMessages = logOutput.trim().split("\n").filter(Boolean);
+    }
+
+    // Run pnpm install (only if there are updates or always to be safe)
+    // 2 minute timeout for install
+    await execAsync("pnpm install --frozen-lockfile", { cwd: mirandaHome, timeout: 120000 });
+
+    // Run pnpm build (1 minute timeout)
+    await execAsync("pnpm build", { cwd: mirandaHome, timeout: 60000 });
+
+    return { success: true, commits, commitMessages };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, commits: 0, commitMessages: [], error: message };
+  }
+}
