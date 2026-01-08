@@ -166,6 +166,31 @@ export async function isRepoDirty(projectPath: string): Promise<boolean> {
 }
 
 /**
+ * Auto-update a single project if it's clean (no uncommitted changes).
+ * Used before task discovery to ensure task list reflects current state.
+ * Returns update result for optional logging, but designed for silent operation.
+ */
+export async function updateProjectIfClean(projectPath: string): Promise<UpdateResult & { path: string }> {
+  const name = projectPath.split("/").pop() || projectPath;
+
+  // Check if repo is dirty
+  const dirty = await isRepoDirty(projectPath);
+  if (dirty) {
+    return { name, path: projectPath, status: "skipped_dirty" };
+  }
+
+  // Pull the project
+  const pullResult = await pullProject(projectPath);
+  if (!pullResult.success) {
+    return { name, path: projectPath, status: "error", error: pullResult.error };
+  } else if (pullResult.commits === 0) {
+    return { name, path: projectPath, status: "already_current" };
+  } else {
+    return { name, path: projectPath, status: "updated", commits: pullResult.commits };
+  }
+}
+
+/**
  * Pull latest changes for a project using git pull --ff-only.
  * Returns the number of new commits pulled.
  */
