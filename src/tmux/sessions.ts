@@ -11,6 +11,9 @@ const execAsync = promisify(exec);
 // Pattern: alphanumeric, hyphens, underscores only (ba task IDs follow this)
 const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
+// Pattern for branch names: alphanumeric, hyphens, underscores, dots, slashes
+const SAFE_BRANCH_PATTERN = /^[a-zA-Z0-9_.\-/]+$/;
+
 /**
  * Validate that a string is safe for shell interpolation
  * Throws if the string contains shell metacharacters
@@ -18,6 +21,15 @@ const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 function validateShellSafe(value: string, name: string): void {
   if (!SAFE_ID_PATTERN.test(value)) {
     throw new Error(`Invalid ${name} format: ${value} (must match ${SAFE_ID_PATTERN})`);
+  }
+}
+
+/**
+ * Validate that a branch name is safe for shell interpolation
+ */
+function validateBranchSafe(value: string, name: string): void {
+  if (!SAFE_BRANCH_PATTERN.test(value)) {
+    throw new Error(`Invalid ${name} format: ${value} (must match ${SAFE_BRANCH_PATTERN})`);
   }
 }
 
@@ -60,20 +72,31 @@ interface SkillConfig {
   skillInvocation: string;
 }
 
+/** Options for skill configuration */
+interface SkillOptions {
+  taskId?: string;
+  baseBranch?: string;
+}
+
 /**
  * Get skill configuration based on skill type.
  * Uses switch statement to make adding new skills explicit and catch unknown skills at compile time.
  */
-function getSkillConfig(skill: SkillType, taskId: string | undefined): SkillConfig {
+function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
+  const { taskId, baseBranch } = options;
   switch (skill) {
     case "mouse": {
       if (!taskId) {
         throw new Error("spawnSession: taskId is required for mouse skill");
       }
       validateShellSafe(taskId, "taskId");
+      if (baseBranch) {
+        validateBranchSafe(baseBranch, "baseBranch");
+      }
+      const baseArg = baseBranch ? ` --base ${baseBranch}` : "";
       return {
         tmuxName: getTmuxName(taskId),
-        skillInvocation: `mouse ${taskId}`,
+        skillInvocation: `mouse ${taskId}${baseArg}`,
       };
     }
     case "drummer": {
@@ -100,25 +123,31 @@ function getSkillConfig(skill: SkillType, taskId: string | undefined): SkillConf
   }
 }
 
+/** Options for spawning a session */
+export interface SpawnOptions {
+  projectPath?: string;
+  baseBranch?: string;
+}
+
 /**
  * Spawn a new tmux session running a Claude skill
  *
  * @param skill - The skill to run ("mouse", "drummer", or "notes")
  * @param taskId - The task ID (required for mouse/notes, ignored for drummer)
  * @param chatId - Telegram chat ID for notifications (unused here, tracked by caller)
- * @param projectPath - Working directory for the tmux session (optional, falls back to config.defaultProject)
+ * @param options - Optional settings: projectPath (working directory), baseBranch (for stacked PRs)
  * @returns The tmux session name
  */
 export async function spawnSession(
   skill: SkillType,
   taskId: string | undefined,
   _chatId: number,
-  projectPath?: string
+  options?: SpawnOptions
 ): Promise<string> {
   // _chatId is tracked by the caller (state/db.ts), not used in tmux command
 
   // Get skill-specific configuration (validates inputs and determines tmux name)
-  const { tmuxName, skillInvocation } = getSkillConfig(skill, taskId);
+  const { tmuxName, skillInvocation } = getSkillConfig(skill, { taskId, baseBranch: options?.baseBranch });
 
   // Build the claude command
   // Format: env PATH=$HOME/.cargo/bin:$PATH claude '<skill> [taskId]' --dangerously-skip-permissions
@@ -135,7 +164,7 @@ export async function spawnSession(
   // -e: set TMUX_SESSION env var for notify-miranda.sh hook to identify session
   // -c: start directory (projectPath or config.defaultProject)
   let startDirFlag = "";
-  const workDir = projectPath ?? config.defaultProject;
+  const workDir = options?.projectPath ?? config.defaultProject;
   if (workDir) {
     const escapedPath = workDir.replace(/'/g, "'\\''");
     startDirFlag = ` -c '${escapedPath}'`;

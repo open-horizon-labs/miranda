@@ -7,6 +7,7 @@ import {
   listTmuxSessions,
   sendKeys,
   type TmuxSession,
+  type SpawnOptions,
 } from "../tmux/sessions.js";
 import {
   getSession,
@@ -18,6 +19,30 @@ import { scanProjects, getProjectTasks, findProjectForTask, isRepoDirty, pullPro
 import { cloneAndInit } from "../projects/clone.js";
 import { config } from "../config.js";
 import type { Session } from "../types.js";
+
+/** Parsed mouse command arguments */
+interface MouseArgs {
+  taskId: string;
+  baseBranch?: string;
+}
+
+/**
+ * Parse /mouse command arguments.
+ * Format: /mouse <task-id> [--base <branch>]
+ */
+function parseMouseArgs(input: string): MouseArgs | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // Match: taskId followed by optional --base <branch>
+  const match = trimmed.match(/^(\S+)(?:\s+--base\s+(\S+))?$/);
+  if (!match) return null;
+
+  return {
+    taskId: match[1],
+    baseBranch: match[2],
+  };
+}
 
 /**
  * Build inline keyboard with task buttons for a project.
@@ -264,7 +289,7 @@ export async function handleMouseCallback(
   await sendMessage(`Starting mouse for \`${taskId}\`...`, { parse_mode: "Markdown" });
 
   try {
-    const tmuxName = await spawnSession("mouse", taskId, chatId, projectPath);
+    const tmuxName = await spawnSession("mouse", taskId, chatId, { projectPath });
 
     const session: Session = {
       taskId,
@@ -289,11 +314,14 @@ Session: \`${tmuxName}\``,
 }
 
 async function handleMouse(ctx: Context): Promise<void> {
-  const taskId = ctx.match?.toString().trim();
-  if (!taskId) {
-    await ctx.reply("Usage: /mouse <task-id>");
+  const input = ctx.match?.toString() ?? "";
+  const args = parseMouseArgs(input);
+  if (!args) {
+    await ctx.reply("Usage: /mouse <task-id> [--base <branch>]");
     return;
   }
+
+  const { taskId, baseBranch } = args;
 
   // Check if session already exists
   const existing = getSession(taskId);
@@ -329,10 +357,15 @@ async function handleMouse(ctx: Context): Promise<void> {
     return;
   }
 
-  await ctx.reply(`Starting mouse for \`${taskId}\`...`, { parse_mode: "Markdown" });
+  const baseInfo = baseBranch ? ` (base: \`${baseBranch}\`)` : "";
+  await ctx.reply(`Starting mouse for \`${taskId}\`${baseInfo}...`, { parse_mode: "Markdown" });
 
   try {
-    const tmuxName = await spawnSession("mouse", taskId, chatId, projectPath ?? undefined);
+    const spawnOptions: SpawnOptions = { projectPath };
+    if (baseBranch) {
+      spawnOptions.baseBranch = baseBranch;
+    }
+    const tmuxName = await spawnSession("mouse", taskId, chatId, spawnOptions);
 
     const session: Session = {
       taskId,
@@ -346,7 +379,7 @@ async function handleMouse(ctx: Context): Promise<void> {
 
     await ctx.reply(
       `Mouse running for \`${taskId}\`
-Branch: \`ba/${taskId}\`
+Branch: \`ba/${taskId}\`${baseBranch ? `\nBase: \`${baseBranch}\`` : ""}
 Session: \`${tmuxName}\``,
       { parse_mode: "Markdown" }
     );
