@@ -101,7 +101,7 @@ export interface TaskInfo {
 
 /**
  * Get tasks for a specific project by name.
- * Returns open and in_progress tasks only.
+ * Uses `ba ready` to show only unblocked tasks that are ready to work on.
  */
 export async function getProjectTasks(projectName: string): Promise<TaskInfo[]> {
   const projectPath = join(config.projectsDir, projectName);
@@ -111,29 +111,48 @@ export async function getProjectTasks(projectName: string): Promise<TaskInfo[]> 
     return [];
   }
 
-  const issuesPath = join(projectPath, ".ba", "issues.jsonl");
-  const tasks: TaskInfo[] = [];
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const execFileAsync = promisify(execFile);
 
   try {
-    const content = await readFile(issuesPath, "utf-8");
-    const lines = content.trim().split("\n").filter(Boolean);
-
-    for (const line of lines) {
-      try {
-        const task = JSON.parse(line) as { id: string; title: string; status: string };
-        if (task.status === "open" || task.status === "in_progress") {
-          tasks.push({
-            id: task.id,
-            title: task.title,
-            status: task.status,
-          });
-        }
-      } catch {
-        // Skip invalid JSON lines
-      }
-    }
+    const { stdout } = await execFileAsync("ba", ["ready"], { cwd: projectPath });
+    return parseBaReadyOutput(stdout);
   } catch {
-    // File read error - return empty
+    // ba command failed - return empty
+    return [];
+  }
+}
+
+/**
+ * Parse the output of `ba ready` command.
+ * Format:
+ *   ID        P  TYPE     TITLE
+ *   ------------------------------------------------------------
+ *   kv-lqy3   2  task Sync command docs in README and /star...
+ */
+function parseBaReadyOutput(output: string): TaskInfo[] {
+  const tasks: TaskInfo[] = [];
+  const lines = output.split("\n");
+
+  for (const line of lines) {
+    // Skip header, separator, and summary lines
+    if (line.includes("ID") && line.includes("TYPE") && line.includes("TITLE")) continue;
+    if (line.includes("----")) continue;
+    if (line.includes("issue(s) ready")) continue;
+    if (!line.trim()) continue;
+
+    // Parse fixed-width columns: ID starts at col 2, title starts after TYPE
+    // Format: "  kv-lqy3   2  task Sync command docs..."
+    const match = line.match(/^\s*(\S+)\s+\d+\s+\S+\s+(.+)$/);
+    if (match) {
+      const [, id, title] = match;
+      tasks.push({
+        id,
+        title: title.replace(/\.{3}$/, "").trim(), // Remove trailing ellipsis if present
+        status: "open", // ba ready only shows ready (open, unblocked) tasks
+      });
+    }
   }
 
   return tasks;

@@ -210,7 +210,7 @@ async function handleTasks(ctx: Context): Promise<void> {
   const tasks = await getProjectTasks(projectName);
 
   if (tasks.length === 0) {
-    await ctx.reply(`*Tasks for ${projectName}*\n\n_No open or in-progress tasks_`, {
+    await ctx.reply(`*Tasks for ${projectName}*\n\n_No tasks ready_`, {
       parse_mode: "Markdown",
     });
     return;
@@ -241,7 +241,7 @@ export async function handleTasksCallback(
   const tasks = await getProjectTasks(projectName);
 
   if (tasks.length === 0) {
-    await sendMessage(`*Tasks for ${projectName}*\n\n_No open or in-progress tasks_`, {
+    await sendMessage(`*Tasks for ${projectName}*\n\n_No tasks ready_`, {
       parse_mode: "Markdown",
     });
     return;
