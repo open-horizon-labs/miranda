@@ -80,7 +80,7 @@ src/
 | `/projects` | List projects on server with task counts |
 | `/update` | Pull all clean projects (skips dirty/active) |
 | `/tasks <project>` | List tasks for a project |
-| `/newproject <repo>` | Clone GitHub repo and init ba/sg/wm |
+| `/newproject <repo>` | Clone GitHub repo and init ba/sg |
 | `/mouse <task>` | Start mouse skill for task |
 | `/drummer` | Run batch merge skill |
 | `/notes <pr-number>` | Address human PR feedback |
@@ -105,7 +105,6 @@ Clones a GitHub repository and initializes development tools in one step.
 1. Clones to `$PROJECTS_DIR/<repo-name>` via `gh repo clone`
 2. Runs `ba init` (task tracking)
 3. Runs `sg init` (superego)
-4. Runs `wm init` (working memory)
 
 **Notes:**
 - GitHub only (uses `gh` CLI)

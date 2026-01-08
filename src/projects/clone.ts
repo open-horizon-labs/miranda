@@ -76,7 +76,7 @@ export interface CloneResult {
 }
 
 /**
- * Clone a repository and initialize ba, sg, wm.
+ * Clone a repository and initialize ba and sg.
  *
  * **GitHub Only**: This function only supports GitHub repositories.
  * Uses `gh repo clone` which requires GitHub URLs.
@@ -152,13 +152,6 @@ export async function cloneAndInit(repoRef: string): Promise<CloneResult> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     initErrors.push(`sg init failed: ${message}`);
-  }
-
-  try {
-    await execFileAsync("wm", ["init"], { cwd: projectPath, timeout: initTimeout });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    initErrors.push(`wm init failed: ${message}`);
   }
 
   if (initErrors.length > 0) {
