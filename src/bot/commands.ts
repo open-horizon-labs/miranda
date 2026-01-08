@@ -555,7 +555,7 @@ async function handleDrummer(ctx: Context): Promise<void> {
   });
 
   try {
-    const tmuxName = await spawnSession("drummer", undefined, chatId, project.path);
+    const tmuxName = await spawnSession("drummer", undefined, chatId, { projectPath: project.path });
 
     // Use tmuxName as the session key since drummer has no task ID
     const session: Session = {
@@ -631,7 +631,7 @@ async function handleNotes(ctx: Context): Promise<void> {
   await ctx.reply(`Starting notes for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
 
   try {
-    const tmuxName = await spawnSession("notes", prNumber, chatId, projectPath);
+    const tmuxName = await spawnSession("notes", prNumber, chatId, { projectPath });
 
     const session: Session = {
       taskId: sessionKey,
