@@ -1,14 +1,16 @@
 import { Bot } from "grammy";
 import { config, validateConfig } from "./config.js";
-import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback } from "./bot/commands.js";
+import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback, discoverOrphanedSessions } from "./bot/commands.js";
 import { parseCallback, formatAnswer, buildQuestionKeyboard } from "./bot/keyboards.js";
-import { createHookServer } from "./hooks/server.js";
+import { createHookServer, type HookServer } from "./hooks/server.js";
 import { sendKeys, killSession } from "./tmux/sessions.js";
 import {
   getSession,
   setSession,
   deleteSession,
   findSessionByTmuxName,
+  getRestartChatId,
+  clearRestartChatId,
 } from "./state/sessions.js";
 import type { HookNotification, CompletionNotification } from "./types.js";
 import { escapeForCodeBlock } from "./utils/telegram.js";
@@ -18,6 +20,36 @@ validateConfig();
 
 // Create bot instance
 const bot = new Bot(config.botToken);
+
+// Hook server (created later, stored here for shutdown access)
+let hookServer: HookServer;
+
+/**
+ * Graceful shutdown function.
+ * Stops the bot and hook server, then exits the process.
+ * systemd/PM2 will restart Miranda automatically.
+ */
+export async function gracefulShutdown(): Promise<void> {
+  console.log("Miranda shutting down...");
+
+  try {
+    // Stop bot polling first (prevents new commands)
+    await bot.stop();
+    console.log("   Bot stopped");
+
+    // Stop hook server (prevents new notifications)
+    if (hookServer) {
+      await hookServer.stop();
+      console.log("   Hook server stopped");
+    }
+
+    console.log("Miranda shutdown complete");
+    process.exit(0);
+  } catch (err) {
+    console.error("Error during shutdown:", err);
+    process.exit(1);
+  }
+}
 
 // Auth middleware - reject unauthorized users
 bot.use(async (ctx, next) => {
@@ -29,8 +61,8 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
-// Register command handlers
-registerCommands(bot);
+// Register command handlers (pass shutdown function for /restart)
+registerCommands(bot, gracefulShutdown);
 
 // Callback query handler for inline keyboards
 bot.on("callback_query:data", async (ctx) => {
@@ -249,7 +281,7 @@ function handleCompletion(completion: CompletionNotification): void {
 }
 
 // Start hook server
-const hookServer = createHookServer(config.hookPort, handleNotification, handleCompletion);
+hookServer = createHookServer(config.hookPort, handleNotification, handleCompletion);
 
 // Start bot and hook server
 console.log("Miranda starting...");
@@ -259,8 +291,29 @@ console.log(`   Hook port: ${config.hookPort}`);
 Promise.all([
   hookServer.start(),
   bot.start({
-    onStart: (info) => {
+    onStart: async (info) => {
       console.log(`   Bot: @${info.username}`);
+
+      // Discover orphaned tmux sessions and repopulate state
+      const orphanCount = await discoverOrphanedSessions();
+      if (orphanCount > 0) {
+        console.log(`   Discovered ${orphanCount} orphaned session(s)`);
+      }
+
+      // Send "back online" message if we have a restart chat ID
+      const restartChatId = getRestartChatId();
+      if (restartChatId) {
+        clearRestartChatId();
+        const orphanMsg = orphanCount > 0
+          ? `\n\n_Discovered ${orphanCount} orphaned session(s) - run /status to see them_`
+          : "";
+        bot.api.sendMessage(restartChatId, `*Miranda is back online*${orphanMsg}`, {
+          parse_mode: "Markdown",
+        }).catch((err) => {
+          console.error("Failed to send back online message:", err);
+        });
+      }
+
       console.log("Miranda is ready");
     },
   }),
