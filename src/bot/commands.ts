@@ -170,9 +170,13 @@ async function handleTasks(ctx: Context): Promise<void> {
     return;
   }
 
-  // Auto-update project before listing tasks
+  // Auto-update project before listing tasks (best-effort, don't block on failure)
   const projectPath = `${config.projectsDir}/${projectName}`;
-  await updateProjectIfClean(projectPath);
+  try {
+    await updateProjectIfClean(projectPath);
+  } catch {
+    // Silently continue - update is best-effort
+  }
 
   const tasks = await getProjectTasks(projectName);
 
@@ -197,9 +201,13 @@ export async function handleTasksCallback(
   projectName: string,
   sendMessage: (text: string, options?: { parse_mode?: "Markdown" | "MarkdownV2" | "HTML"; reply_markup?: InlineKeyboard }) => Promise<void>
 ): Promise<void> {
-  // Auto-update project before listing tasks
+  // Auto-update project before listing tasks (best-effort, don't block on failure)
   const projectPath = `${config.projectsDir}/${projectName}`;
-  await updateProjectIfClean(projectPath);
+  try {
+    await updateProjectIfClean(projectPath);
+  } catch {
+    // Silently continue - update is best-effort
+  }
 
   const tasks = await getProjectTasks(projectName);
 
@@ -239,8 +247,12 @@ export async function handleMouseCallback(
     return;
   }
 
-  // Auto-update project before starting mouse
-  await updateProjectIfClean(projectPath);
+  // Auto-update project before starting mouse (best-effort, don't block on failure)
+  try {
+    await updateProjectIfClean(projectPath);
+  } catch {
+    // Silently continue - update is best-effort
+  }
 
   // Re-check task exists after update (task list may have changed)
   projectPath = await findProjectForTask(taskId);
@@ -303,8 +315,12 @@ async function handleMouse(ctx: Context): Promise<void> {
     return;
   }
 
-  // Auto-update project before starting mouse
-  await updateProjectIfClean(projectPath);
+  // Auto-update project before starting mouse (best-effort, don't block on failure)
+  try {
+    await updateProjectIfClean(projectPath);
+  } catch {
+    // Silently continue - update is best-effort
+  }
 
   // Re-check task exists after update (task list may have changed)
   projectPath = await findProjectForTask(taskId);
