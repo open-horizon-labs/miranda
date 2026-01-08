@@ -10,7 +10,7 @@ User=%i
 Group=%i
 WorkingDirectory=/home/%i/miranda
 ExecStart=/usr/bin/node dist/index.js
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 # Environment
