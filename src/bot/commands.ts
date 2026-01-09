@@ -164,7 +164,7 @@ let shutdownFn: ShutdownFn | undefined;
  * - /drummer <project> - Run batch merge for a project
  * - /notes <project> <pr-number> - Address PR feedback
  * - /newproject <repo> - Clone repo and init ba/sg/wm
- * - /update - Pull all clean projects
+ * - /pull - Pull all clean projects
  * - /selfupdate - Pull and rebuild Miranda
  * - /restart - Graceful restart
  * - /logs, /ssh - Stubs for future implementation
@@ -184,7 +184,7 @@ export function registerCommands(bot: Bot<Context>, shutdown: ShutdownFn): void 
   bot.command("drummer", handleDrummer);
   bot.command("notes", handleNotes);
   bot.command("newproject", handleNewProject);
-  bot.command("update", handleUpdate);
+  bot.command("pull", handlePull);
   bot.command("selfupdate", handleSelfUpdate);
   bot.command("restart", handleRestart);
   bot.command("reset", handleReset);
@@ -204,7 +204,7 @@ I give voice to the Primer. Commands:
 /projects - List projects with tasks
 /tasks <project> - List tasks for a project
 /newproject <repo> - Clone and init new project
-/update - Pull all clean projects
+/pull - Pull all clean projects
 /selfupdate - Pull and rebuild Miranda
 /restart - Graceful restart
 /reset <project> - Hard reset project to origin
@@ -842,12 +842,12 @@ Addressing human feedback...`,
   }
 }
 
-async function handleUpdate(ctx: Context): Promise<void> {
-  await ctx.reply("Updating projects...");
+async function handlePull(ctx: Context): Promise<void> {
+  await ctx.reply("Pulling projects...");
 
   const projects = await scanProjects();
   if (projects.length === 0) {
-    await ctx.reply("*Update*\n\n_No projects found_", { parse_mode: "Markdown" });
+    await ctx.reply("*Pull*\n\n_No projects found_", { parse_mode: "Markdown" });
     return;
   }
 
@@ -890,7 +890,7 @@ async function handleUpdate(ctx: Context): Promise<void> {
   }
 
   // Build response message grouped by status
-  const lines: string[] = ["*Update Results*", ""];
+  const lines: string[] = ["*Pull Results*", ""];
 
   const updated = results.filter((r) => r.status === "updated");
   if (updated.length > 0) {
