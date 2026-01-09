@@ -79,7 +79,7 @@ src/
 | Command | Action |
 |---------|--------|
 | `/projects` | List projects on server with task counts |
-| `/update` | Pull all clean projects (skips dirty/active) |
+| `/pull` | Pull all clean projects (skips dirty/active) |
 | `/selfupdate` | Pull and rebuild Miranda |
 | `/restart` | Graceful restart |
 | `/reset <project>` | Hard reset project to origin (with confirmation) |
