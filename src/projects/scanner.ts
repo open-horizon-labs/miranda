@@ -300,6 +300,95 @@ export async function findProjectForTask(taskId: string): Promise<string | null>
   return null;
 }
 
+export interface ResetResult {
+  success: boolean;
+  previousHead?: string;
+  newHead?: string;
+  error?: string;
+}
+
+/**
+ * Get the default branch for a project (main or master).
+ * Returns the branch name if found, null otherwise.
+ */
+export async function getDefaultBranch(projectPath: string): Promise<string | null> {
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  try {
+    // Check what origin/HEAD points to (set during clone)
+    const { stdout } = await execAsync("git symbolic-ref refs/remotes/origin/HEAD", {
+      cwd: projectPath,
+    });
+    // Output is "refs/remotes/origin/main" - extract branch name
+    const match = stdout.trim().match(/refs\/remotes\/origin\/(.+)/);
+    if (match) {
+      return match[1];
+    }
+  } catch {
+    // Fallback: check if origin/main or origin/master exists
+    try {
+      await execAsync("git rev-parse --verify origin/main", { cwd: projectPath });
+      return "main";
+    } catch {
+      try {
+        await execAsync("git rev-parse --verify origin/master", { cwd: projectPath });
+        return "master";
+      } catch {
+        // Neither exists
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Hard reset a project to origin/<branch>.
+ * Fetches origin first, then resets to the remote branch.
+ */
+export async function resetProject(projectPath: string): Promise<ResetResult> {
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  try {
+    // Get default branch
+    const branch = await getDefaultBranch(projectPath);
+    if (!branch) {
+      return { success: false, error: "Could not determine default branch (no origin/main or origin/master)" };
+    }
+
+    // Get current HEAD before reset
+    const { stdout: beforeHead } = await execAsync("git rev-parse --short HEAD", {
+      cwd: projectPath,
+    });
+    const previousHead = beforeHead.trim();
+
+    // Fetch origin to get latest
+    await execAsync("git fetch origin", { cwd: projectPath, timeout: 60000 });
+
+    // Checkout and reset to origin/<branch>
+    await execAsync(`git checkout ${branch}`, { cwd: projectPath, timeout: 10000 });
+    await execAsync(`git reset --hard origin/${branch}`, { cwd: projectPath, timeout: 10000 });
+
+    // Clean untracked files and directories
+    await execAsync("git clean -fd", { cwd: projectPath });
+
+    // Get new HEAD after reset
+    const { stdout: afterHead } = await execAsync("git rev-parse --short HEAD", {
+      cwd: projectPath,
+    });
+    const newHead = afterHead.trim();
+
+    return { success: true, previousHead, newHead };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+}
+
 export interface SelfUpdateResult {
   success: boolean;
   commits: number;
