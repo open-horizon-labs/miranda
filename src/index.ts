@@ -12,8 +12,8 @@ import {
   getRestartChatId,
   clearRestartChatId,
 } from "./state/sessions.js";
-import type { HookNotification, CompletionNotification } from "./types.js";
-import { escapeForCodeBlock } from "./utils/telegram.js";
+import type { HookNotification, CompletionNotification, AlertNotification } from "./types.js";
+import { escapeForCodeBlock, escapeMarkdown } from "./utils/telegram.js";
 
 // Validate configuration
 validateConfig();
@@ -350,8 +350,60 @@ function handleCompletion(completion: CompletionNotification): void {
   }
 }
 
+// Alert handler - called when Shrike sends an alert
+function handleAlert(alert: AlertNotification): void {
+  // Format the alert message for Telegram
+  const lines: string[] = [];
+
+  // Header with type and source
+  const sourceInfo = alert.source ? ` (${escapeMarkdown(alert.source)})` : "";
+  lines.push(`*${escapeMarkdown(alert.type)}*${sourceInfo}`);
+
+  // Title
+  lines.push(escapeMarkdown(alert.title));
+
+  // Body if present
+  if (alert.body) {
+    lines.push("");
+    lines.push(escapeMarkdown(alert.body));
+  }
+
+  // Reason if present
+  if (alert.reason) {
+    lines.push("");
+    lines.push(`_${escapeMarkdown(alert.reason)}_`);
+  }
+
+  // URL if present
+  if (alert.url) {
+    lines.push("");
+    // Escape parentheses in URL to prevent breaking Markdown link syntax
+    const escapedUrl = alert.url.replace(/\(/g, "%28").replace(/\)/g, "%29");
+    lines.push(`[View](${escapedUrl})`);
+  }
+
+  // Metadata if present
+  if (alert.metadata && Object.keys(alert.metadata).length > 0) {
+    lines.push("");
+    for (const [key, value] of Object.entries(alert.metadata)) {
+      lines.push(`${escapeMarkdown(key)}: ${escapeMarkdown(String(value))}`);
+    }
+  }
+
+  const message = lines.join("\n");
+
+  // Send to all allowed users
+  for (const userId of config.allowedUserIds) {
+    bot.api
+      .sendMessage(userId, message, { parse_mode: "Markdown" })
+      .catch((err) => {
+        console.error(`Failed to send alert to user ${userId}:`, err);
+      });
+  }
+}
+
 // Start hook server
-hookServer = createHookServer(config.hookPort, handleNotification, handleCompletion);
+hookServer = createHookServer(config.hookPort, handleNotification, handleCompletion, handleAlert);
 
 // Start bot and hook server
 console.log("Miranda starting...");
