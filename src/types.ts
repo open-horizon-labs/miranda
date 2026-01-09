@@ -76,5 +76,18 @@ export interface CompletionNotification {
 // === Alert Notification (from Shrike) ===
 
 export interface AlertNotification {
-  message: string; // Pre-formatted message to send to Telegram
+  /** Alert type identifier */
+  type: string;
+  /** Alert title/headline */
+  title: string;
+  /** Main content/description */
+  body?: string;
+  /** URL to the source (e.g., post, article) */
+  url?: string;
+  /** Platform or source name */
+  source?: string;
+  /** Why this alert was triggered (e.g., keyword match) */
+  reason?: string;
+  /** Additional metadata as key-value pairs */
+  metadata?: Record<string, string | number>;
 }
