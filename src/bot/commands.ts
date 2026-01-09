@@ -17,7 +17,7 @@ import {
   getAllSessions,
   setRestartChatId,
 } from "../state/sessions.js";
-import { scanProjects, getProjectTasks, findProjectForTask, isRepoDirty, pullProject, updateProjectIfClean, selfUpdate, type TaskInfo, type UpdateResult, type SelfUpdateResult } from "../projects/scanner.js";
+import { scanProjects, getProjectTasks, findProjectForTask, isRepoDirty, pullProject, updateProjectIfClean, selfUpdate, resetProject, getDefaultBranch, type TaskInfo, type UpdateResult, type SelfUpdateResult, type ResetResult } from "../projects/scanner.js";
 import { cloneAndInit } from "../projects/clone.js";
 import { config } from "../config.js";
 import type { Session } from "../types.js";
@@ -186,6 +186,7 @@ export function registerCommands(bot: Bot<Context>, shutdown: ShutdownFn): void 
   bot.command("update", handleUpdate);
   bot.command("selfupdate", handleSelfUpdate);
   bot.command("restart", handleRestart);
+  bot.command("reset", handleReset);
   bot.command("logs", handleLogs);
   bot.command("ssh", handleSsh);
 
@@ -205,6 +206,7 @@ I give voice to the Primer. Commands:
 /update - Pull all clean projects
 /selfupdate - Pull and rebuild Miranda
 /restart - Graceful restart
+/reset <project> - Hard reset project to origin
 /mouse <task-id> - Start a mouse on a task
 /drummer <project> - Run batch merge for project
 /notes <project> <pr> - Address PR feedback
@@ -1011,6 +1013,136 @@ async function handleRestart(ctx: Context): Promise<void> {
     // Fallback if shutdown function wasn't set (shouldn't happen)
     await ctx.reply("Error: Shutdown function not available");
   }
+}
+
+async function handleReset(ctx: Context): Promise<void> {
+  const projectName = ctx.match?.toString().trim();
+  if (!projectName) {
+    await ctx.reply("Usage: /reset <project>");
+    return;
+  }
+
+  // Validate project exists
+  const projects = await scanProjects();
+  const project = projects.find((p) => p.name === projectName);
+  if (!project) {
+    await ctx.reply(`Project \`${projectName}\` not found in PROJECTS_DIR`, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Check for active sessions in this project
+  const sessions = getAllSessions();
+  const projectTasks = await getProjectTasks(projectName);
+  const projectTaskIds = new Set(projectTasks.map((t) => t.id));
+  const activeSessions = sessions.filter(
+    (s) =>
+      (s.status === "running" || s.status === "waiting_input") &&
+      projectTaskIds.has(s.taskId)
+  );
+
+  if (activeSessions.length > 0) {
+    const lines = [
+      `*Reset Blocked*`,
+      "",
+      `${activeSessions.length} active session(s) in ${projectName}:`,
+      "",
+    ];
+    for (const s of activeSessions) {
+      const statusEmoji = s.status === "waiting_input" ? "⏸️" : "🔄";
+      lines.push(`  ${statusEmoji} \`${s.taskId}\``);
+    }
+    lines.push("");
+    lines.push("Stop these sessions first with /stop");
+
+    await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+    return;
+  }
+
+  // Get default branch to show in confirmation
+  const branch = await getDefaultBranch(project.path);
+  if (!branch) {
+    await ctx.reply(`Could not determine default branch for \`${projectName}\``, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Show confirmation keyboard
+  const keyboard = new InlineKeyboard()
+    .text("Reset", `reset:confirm:${projectName}`)
+    .text("Cancel", `reset:cancel:${projectName}`);
+
+  await ctx.reply(
+    `*Reset ${projectName}*\n\nThis will hard reset to \`origin/${branch}\`, discarding all local changes.\n\nAre you sure?`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: keyboard,
+    }
+  );
+}
+
+/**
+ * Handle reset confirmation callback from /reset command.
+ * Exported for use by callback handler in index.ts.
+ */
+export async function handleResetCallback(
+  projectName: string,
+  confirmed: boolean,
+  editMessage: (text: string, options?: { parse_mode?: "Markdown" | "MarkdownV2" | "HTML" }) => Promise<void>
+): Promise<void> {
+  if (!confirmed) {
+    await editMessage("*Reset*\n\n_Cancelled_", { parse_mode: "Markdown" });
+    return;
+  }
+
+  // Validate project still exists
+  const projects = await scanProjects();
+  const project = projects.find((p) => p.name === projectName);
+  if (!project) {
+    await editMessage(`*Reset*\n\n_Project ${projectName} not found_`, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Re-check for active sessions (may have started since confirmation prompt)
+  const sessions = getAllSessions();
+  const projectTasks = await getProjectTasks(projectName);
+  const projectTaskIds = new Set(projectTasks.map((t) => t.id));
+  const activeSessions = sessions.filter(
+    (s) =>
+      (s.status === "running" || s.status === "waiting_input") &&
+      projectTaskIds.has(s.taskId)
+  );
+
+  if (activeSessions.length > 0) {
+    await editMessage(
+      `*Reset Blocked*\n\n_Session started in ${projectName} since prompt. Stop it first._`,
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
+  // Perform the reset
+  const result = await resetProject(project.path);
+
+  if (!result.success) {
+    await editMessage(`*Reset Failed*\n\n\`${result.error}\``, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  const headChange =
+    result.previousHead === result.newHead
+      ? `HEAD unchanged at \`${result.newHead}\``
+      : `\`${result.previousHead}\` → \`${result.newHead}\``;
+
+  await editMessage(`*Reset Complete*\n\n${projectName}: ${headChange}`, {
+    parse_mode: "Markdown",
+  });
 }
 
 async function handleNewProject(ctx: Context): Promise<void> {

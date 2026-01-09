@@ -1,6 +1,6 @@
 import { Bot } from "grammy";
 import { config, validateConfig } from "./config.js";
-import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback, discoverOrphanedSessions, executeKillall } from "./bot/commands.js";
+import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback, discoverOrphanedSessions, executeKillall, handleResetCallback } from "./bot/commands.js";
 import { parseCallback, formatAnswer, buildQuestionKeyboard } from "./bot/keyboards.js";
 import { createHookServer, type HookServer } from "./hooks/server.js";
 import { sendKeys, killSession } from "./tmux/sessions.js";
@@ -121,6 +121,22 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.editMessageText("*Kill All*\n\n_Cancelled_", {
       parse_mode: "Markdown",
     });
+    return;
+  }
+
+  // Handle reset:confirm:<project> and reset:cancel:<project> callbacks
+  if (data.startsWith("reset:confirm:") || data.startsWith("reset:cancel:")) {
+    const parts = data.split(":");
+    const confirmed = parts[1] === "confirm";
+    const projectName = parts.slice(2).join(":"); // Rejoin in case project name has colons
+    await ctx.answerCallbackQuery({ text: confirmed ? "Resetting..." : "Cancelled" });
+    await handleResetCallback(
+      projectName,
+      confirmed,
+      async (text, options) => {
+        await ctx.editMessageText(text, options);
+      }
+    );
     return;
   }
 

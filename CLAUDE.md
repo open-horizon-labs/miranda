@@ -82,6 +82,7 @@ src/
 | `/update` | Pull all clean projects (skips dirty/active) |
 | `/selfupdate` | Pull and rebuild Miranda |
 | `/restart` | Graceful restart |
+| `/reset <project>` | Hard reset project to origin (with confirmation) |
 | `/tasks <project>` | List tasks for a project |
 | `/newproject <repo>` | Clone GitHub repo and init ba/sg |
 | `/mouse <task>` | Start mouse skill for task |
