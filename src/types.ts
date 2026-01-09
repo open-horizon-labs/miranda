@@ -72,3 +72,9 @@ export interface CompletionNotification {
   error?: string; // Error message on failure
   blocker?: string; // Reason for blocked status
 }
+
+// === Alert Notification (from Shrike) ===
+
+export interface AlertNotification {
+  message: string; // Pre-formatted message to send to Telegram
+}
