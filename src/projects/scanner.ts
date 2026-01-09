@@ -397,6 +397,37 @@ export interface SelfUpdateResult {
 }
 
 /**
+ * Find pnpm executable. When running via systemd, pnpm may not be in PATH.
+ * Checks common installation locations and falls back to bare "pnpm" command.
+ */
+async function findPnpm(): Promise<string> {
+  const { homedir } = await import("os");
+  const home = homedir();
+
+  // Common pnpm installation locations
+  const candidates = [
+    join(home, ".local/share/pnpm/pnpm"),
+    join(home, ".pnpm-global/bin/pnpm"),
+    join(home, ".local/bin/pnpm"),
+    join(home, ".corepack/pnpm"),
+    "/usr/local/bin/pnpm",
+    "/usr/bin/pnpm",
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // Not found or not executable, try next
+    }
+  }
+
+  // Fall back to bare command (relies on PATH)
+  return "pnpm";
+}
+
+/**
  * Update Miranda itself: git pull --ff-only, pnpm install, pnpm build.
  * Uses config.mirandaHome as the project directory.
  */
@@ -406,6 +437,7 @@ export async function selfUpdate(): Promise<SelfUpdateResult> {
   const execAsync = promisify(exec);
 
   const mirandaHome = config.mirandaHome;
+  const pnpm = await findPnpm();
 
   try {
     // Check if repo is dirty first
@@ -451,10 +483,10 @@ export async function selfUpdate(): Promise<SelfUpdateResult> {
 
     // Run pnpm install (only if there are updates or always to be safe)
     // 2 minute timeout for install
-    await execAsync("pnpm install --frozen-lockfile", { cwd: mirandaHome, timeout: 120000 });
+    await execAsync(`${pnpm} install --frozen-lockfile`, { cwd: mirandaHome, timeout: 120000 });
 
     // Run pnpm build (1 minute timeout)
-    await execAsync("pnpm build", { cwd: mirandaHome, timeout: 60000 });
+    await execAsync(`${pnpm} build`, { cwd: mirandaHome, timeout: 60000 });
 
     return { success: true, commits, commitMessages };
   } catch (error) {
