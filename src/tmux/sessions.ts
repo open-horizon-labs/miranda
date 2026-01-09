@@ -194,7 +194,11 @@ export async function spawnSession(
 }
 
 /**
- * Kill a tmux session by name
+ * Kill a tmux session by name (immediate SIGKILL)
+ *
+ * Use for cleanup/bulk operations (killall, cleanup) or when the session
+ * has already signaled completion. For user-initiated stops, prefer
+ * stopSession() which attempts graceful shutdown first.
  *
  * @param tmuxName - The tmux session name to kill
  */
@@ -210,6 +214,67 @@ export async function killSession(tmuxName: string): Promise<void> {
       throw error;
     }
   }
+}
+
+/**
+ * Check if a tmux session exists
+ */
+async function sessionExists(tmuxName: string): Promise<boolean> {
+  try {
+    await execAsync(`tmux has-session -t ${tmuxName}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sleep for a given number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Stop a tmux session gracefully with fallback to force kill.
+ *
+ * 1. Sends Ctrl-C (SIGINT) to allow graceful shutdown
+ * 2. Waits up to 3 seconds for session to exit
+ * 3. Falls back to kill-session (SIGKILL) if still running
+ *
+ * @param tmuxName - The tmux session name to stop
+ * @returns Whether graceful stop succeeded (true) or fell back to kill (false)
+ */
+export async function stopSession(tmuxName: string): Promise<boolean> {
+  validateShellSafe(tmuxName, "tmuxName");
+
+  // Check if session exists first
+  if (!(await sessionExists(tmuxName))) {
+    return true; // Already gone, consider it graceful
+  }
+
+  // Send Ctrl-C for graceful shutdown
+  try {
+    await execAsync(`tmux send-keys -t ${tmuxName} C-c`);
+  } catch {
+    // If we can't send keys, session may already be gone
+    if (!(await sessionExists(tmuxName))) {
+      return true;
+    }
+    // Fall through to force kill
+  }
+
+  // Wait up to 3 seconds for graceful exit (check every 500ms)
+  for (let i = 0; i < 6; i++) {
+    await sleep(500);
+    if (!(await sessionExists(tmuxName))) {
+      return true; // Graceful shutdown succeeded
+    }
+  }
+
+  // Still running - force kill
+  await killSession(tmuxName);
+  return false;
 }
 
 /**

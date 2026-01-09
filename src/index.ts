@@ -3,7 +3,7 @@ import { config, validateConfig } from "./config.js";
 import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback, discoverOrphanedSessions, executeKillall, handleResetCallback } from "./bot/commands.js";
 import { parseCallback, formatAnswer, buildQuestionKeyboard } from "./bot/keyboards.js";
 import { createHookServer, type HookServer } from "./hooks/server.js";
-import { sendKeys, killSession } from "./tmux/sessions.js";
+import { sendKeys, killSession, stopSession } from "./tmux/sessions.js";
 import {
   getSession,
   setSession,
@@ -170,7 +170,7 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  // Handle stop:<taskId> callback from session start messages
+  // Handle stop:<taskId> callback from session start messages and /status
   if (data.startsWith("stop:")) {
     const sessionKey = data.slice(5); // Remove "stop:" prefix
     const session = getSession(sessionKey);
@@ -180,10 +180,12 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     try {
-      await killSession(session.tmuxName);
+      // Use graceful stop with fallback to kill
+      const graceful = await stopSession(session.tmuxName);
       deleteSession(sessionKey);
-      await ctx.answerCallbackQuery({ text: `Stopped ${sessionKey}` });
-      await ctx.editMessageText(`Stopped session \`${sessionKey}\``, {
+      const method = graceful ? "stopped" : "killed";
+      await ctx.answerCallbackQuery({ text: `Session ${method}` });
+      await ctx.editMessageText(`Session \`${sessionKey}\` ${method}`, {
         parse_mode: "Markdown",
       }).catch(() => {}); // Best-effort update
     } catch (error) {

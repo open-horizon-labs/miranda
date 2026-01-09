@@ -4,6 +4,7 @@ import { InlineKeyboard } from "grammy";
 import {
   spawnSession,
   killSession,
+  stopSession,
   getTmuxName,
   listTmuxSessions,
   sendKeys,
@@ -510,7 +511,17 @@ async function handleStatus(ctx: Context): Promise<void> {
     }
   }
 
-  await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+  // Build keyboard with stop buttons for each tracked session
+  const keyboard = new InlineKeyboard();
+  for (const s of sessions) {
+    keyboard.text(`Stop ${s.taskId}`, `stop:${s.taskId}`).row();
+  }
+
+  if (sessions.length > 0) {
+    await ctx.reply(lines.join("\n"), { parse_mode: "Markdown", reply_markup: keyboard });
+  } else {
+    await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+  }
 }
 
 async function handleStop(ctx: Context): Promise<void> {
@@ -546,13 +557,15 @@ async function handleStop(ctx: Context): Promise<void> {
   }
 
   try {
-    await killSession(tmuxName);
+    // Use graceful stop with fallback to kill
+    const graceful = await stopSession(tmuxName);
+    const method = graceful ? "stopped" : "killed";
 
     if (session) {
       deleteSession(input);
-      await ctx.reply(`Stopped session \`${input}\``, { parse_mode: "Markdown" });
+      await ctx.reply(`Session \`${input}\` ${method}`, { parse_mode: "Markdown" });
     } else {
-      await ctx.reply(`Killed tmux session \`${tmuxName}\` (was not tracked)`, {
+      await ctx.reply(`Tmux session \`${tmuxName}\` ${method} (was not tracked)`, {
         parse_mode: "Markdown",
       });
     }
