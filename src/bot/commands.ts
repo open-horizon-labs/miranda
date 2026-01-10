@@ -30,15 +30,27 @@ interface MouseArgs {
 }
 
 /**
+ * Normalize dash-like characters to standard ASCII hyphens.
+ * Mobile keyboards often autocorrect -- to em-dash (—).
+ * This ensures command arguments parse correctly regardless of input method.
+ */
+function normalizeDashes(input: string): string {
+  return input
+    .replace(/—/g, "--") // em-dash (U+2014) → double hyphen
+    .replace(/–/g, "-")  // en-dash (U+2013) → hyphen
+    .replace(/−/g, "-"); // minus sign (U+2212) → hyphen
+}
+
+/**
  * Parse /mouse command arguments.
  * Format: /mouse <task-id> [--base <branch>]
  */
 function parseMouseArgs(input: string): MouseArgs | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
+  const normalized = normalizeDashes(input.trim());
+  if (!normalized) return null;
 
   // Match: taskId followed by optional --base <branch>
-  const match = trimmed.match(/^(\S+)(?:\s+--base\s+(\S+))?$/);
+  const match = normalized.match(/^(\S+)(?:\s+--base\s+(\S+))?$/);
   if (!match) return null;
 
   return {
