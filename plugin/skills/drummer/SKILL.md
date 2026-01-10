@@ -18,19 +18,33 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
    cat .wm/dive_context.md 2>/dev/null || echo "No dive context"
    ```
    This provides architecture decisions, conventions, and session intent.
-2. Find claimed tasks:
-   ```bash
-   ba list --status=in_progress
-   ```
 
-3. For each claimed task, find its PR with `drummer-merge` label:
+2. Find all PRs with `drummer-merge` label:
    ```bash
-   gh pr list --head ba/<task-id> --label drummer-merge --json number,title,mergeable,additions,deletions,labels
+   gh pr list --label drummer-merge --json number,title,headRefName,baseRefName,mergeable,additions,deletions
    ```
    **Only PRs with the `drummer-merge` label are eligible for merge.**
-   Skip PRs without this label and report them as "awaiting human approval".
+   This finds ALL labeled PRs, not just those for claimed tasks.
 
-4. **Batch review** - evaluate all PRs together:
+3. **Build dependency graph and identify stacks:**
+   - Create adjacency list: `baseRefName → [PRs targeting it]`
+   - Find root PRs: those where `baseRefName = main` (or master)
+   - Identify stacks: chains where child PRs target parent PR branches
+   - **Detect cycles**: If a branch eventually targets itself, report error and skip
+   - Example graph:
+     ```
+     main ← PR #42 (ba/abc-123) ← PR #43 (ba/abc-456)
+     main ← PR #44 (ba/xyz-789)  [separate stack]
+     ```
+
+4. **Select stack to process:**
+   - If multiple independent stacks exist, pick first by lowest root PR number (FIFO by age)
+   - If multiple PRs target the same base branch, order by PR number (lowest first)
+   - Report other stacks as "queued for next run"
+   - Process only one stack per invocation to keep merges atomic
+   - **Orphaned children**: If a child PR targets a branch that doesn't exist (parent merged externally), update its base to main and treat as a root
+
+5. **Batch review** - evaluate all PRs in the selected stack together:
    - Collect combined diff of all PRs against main
    - Run `sg review` on the combined changes
    - Evaluate:
@@ -42,37 +56,70 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
      - Report issues
      - Ask human whether to proceed or address first
 
-5. For each PR (in dependency order):
-   - Rebase onto latest main:
-     ```bash
-     git fetch origin
-     gh pr checkout <pr-number>
-     git rebase origin/main
-     ```
-   - If .ba/ conflict, resolve mechanically (each task = one line)
-   - Push rebased branch:
-     ```bash
-     git push --force-with-lease
-     ```
-   - Squash merge:
-     ```bash
-     gh pr merge <pr-number> --squash
-     ```
-   - **Verify task closure** - After merge, ensure all tasks from this PR are closed:
-     ```bash
-     git pull origin main
-     for task_id in <tasks-from-pr>; do
-       ba show $task_id  # Check status
-       # If not closed, fix it:
-       ba finish $task_id
-     done
-     # If any fixes were needed:
-     git add .ba/ && git commit -m "fix: close tasks after merge" && git push origin main
-     ```
-     Squash merge can lose .ba/ changes during conflict resolution. This step ensures
-     all merged tasks end in closed state regardless of what the merge preserved.
+6. **Merge stack in dependency order** (root first, then children):
 
-6. **Signal completion (MANDATORY)** - This is the LAST thing you do:
+   For each PR in the stack, starting from the root:
+
+   a. **Verify CI is passing:**
+      ```bash
+      gh pr checks <pr-number> --fail-on-error
+      ```
+      If CI is failing, stop and report error.
+
+   b. **Rebase onto its target branch:**
+      ```bash
+      git fetch origin
+      gh pr checkout <pr-number>
+      git rebase origin/<base-branch>  # main for root, parent branch for children
+      ```
+
+   c. If .ba/ conflict, resolve mechanically (each task = one line)
+
+   d. Push rebased branch:
+      ```bash
+      git push --force-with-lease
+      ```
+
+   e. Squash merge:
+      ```bash
+      gh pr merge <pr-number> --squash
+      ```
+
+   f. **For child PRs in the stack** (after parent merged):
+      - Update base branch to main:
+        ```bash
+        gh pr edit <child-pr-number> --base main
+        ```
+      - Rebase child onto main:
+        ```bash
+        gh pr checkout <child-pr-number>
+        git rebase origin/main
+        git push --force-with-lease
+        ```
+      - Force-push triggers new CI run; batch review + parent merge provides confidence
+      - Now child PR targets main and is rebased, continue to merge it (step a-e)
+
+   g. **Verify task closure** - After each merge:
+      ```bash
+      git pull origin main
+      # Extract task ID from branch name: ba/abc-123 → abc-123
+      # Note: Assumes branch follows ba/<task-id> convention from mouse skill
+      task_id="${headRefName#ba/}"
+      ba show $task_id  # Check status
+      # If not closed, fix it:
+      ba finish $task_id
+      # If any fixes were needed:
+      git add .ba/ && git commit -m "fix: close task ${task_id} after merge" && git push origin main
+      ```
+      Squash merge can lose .ba/ changes during conflict resolution.
+
+   h. **On merge failure** - If any PR in the stack fails to merge:
+      - Stop processing the stack
+      - Report which PRs were merged successfully and which failed
+      - Signal error: already-merged PRs stay merged, failed PR remains open
+      - Next drummer run will see the failed PR as a new root (its parent is now in main)
+
+7. **Signal completion (MANDATORY)** - This is the LAST thing you do:
    ```bash
    # On success:
    curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
@@ -88,19 +135,42 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
 
 ## Stacked PRs
 
-When PRs target other PRs (not main), drummer detects the stack and merges in order:
+When PRs target other PR branches (not main), drummer detects the stack and processes it:
 
-1. Find root PRs (target main)
-2. Merge root PR
-3. Rebase child PRs onto main, update their target to main
-4. Repeat until stack is flattened
+**Detection:**
+```bash
+gh pr list --label drummer-merge --json number,title,headRefName,baseRefName,mergeable
+```
+- PRs with `baseRefName = main` are roots
+- PRs with `baseRefName = ba/<task-id>` are children targeting that parent
 
+**Graph building:**
+```
+adjacency[baseRefName] = [list of PRs targeting it]
+
+Example:
+  adjacency["main"] = [PR #42, PR #44]
+  adjacency["ba/abc-123"] = [PR #43]
+
+Stack 1: main ← #42 (ba/abc-123) ← #43 (ba/abc-456)
+Stack 2: main ← #44 (ba/xyz-789)
+```
+
+**Merge sequence** (for Stack 1):
+1. Merge #42 to main
+2. Update #43: `gh pr edit 43 --base main`
+3. Rebase #43 onto main: `git rebase origin/main && git push --force-with-lease`
+4. Merge #43 to main
+
+**After processing:**
 ```
 Before:  PR #43 → ba/abc-123 → main
          PR #42 → main
+         PR #44 → main (separate stack)
 
 After:   PR #42 merged to main
          PR #43 rebased onto main, merged to main
+         PR #44 remains for next drummer run
 ```
 
 ## Batch Review Criteria
@@ -131,50 +201,84 @@ The holistic review checks what individual PR reviews can't:
 
 ## Exit Conditions
 
-- **Success**: All eligible PRs reviewed and merged → signal `status: "success"`
+- **Success**: Selected stack fully merged → signal `status: "success"`
+- **Partial success**: Some PRs in stack merged, then failure → signal `status: "error"` with details
 - **Needs attention**: Batch review raised concerns - waiting for human decision (no signal - awaiting input)
-- **Error**: Unrecoverable failure (code conflicts, CI failing, etc.) → signal `status: "error"` with message
+- **Error**: Unrecoverable failure (code conflicts, CI failing, cycle detected) → signal `status: "error"` with message
+- **No work**: No PRs with `drummer-merge` label found → signal `status: "success"` (nothing to do)
 
 ## Example
+
+### Basic (no stacks)
 
 ```
 $ /drummer
 
-Finding claimed tasks...
-Found 3 in_progress tasks: abc-123, abc-456, abc-789
+Finding PRs with drummer-merge label...
+Found 2 PRs:
+  PR #42 "Fix validation bug" → main (CI ✓)
+  PR #44 "Refactor validator" → main (CI ✓)
 
-Checking for open PRs with drummer-merge label...
-  abc-123: PR #42 "Fix validation bug" (CI ✓, drummer-merge ✓)
-  abc-456: PR #43 "Add edge case tests" (CI ✓, drummer-merge ✓)
-  abc-789: PR #44 "Refactor validator" (CI ✓) ⏳ awaiting approval
+Building dependency graph...
+  Stack 1: main ← #42
+  Stack 2: main ← #44
+  2 independent stacks, processing Stack 1
 
-Running batch review on combined changes...
-Collecting diffs: +847 -203 across 12 files
-
-Batch review complete:
-  ✓ No logical conflicts
-  ✓ No duplication
-  ⚠ Ordering dependency: PR #44 (refactor) should merge before PR #42 (fix)
-
-Reordering merge sequence: #44 → #42 → #43
-
-Processing PR #44 (Refactor validator)...
-  Rebasing onto main... clean
-  Squash merging... ✓
+Running batch review on Stack 1 (1 PR)...
+Batch review complete: ✓ No issues
 
 Processing PR #42 (Fix validation bug)...
+  Verifying CI... ✓
   Rebasing onto main... clean
   Squash merging... ✓
+  Verifying task closure... ✓
 
-Processing PR #43 (Add edge case tests)...
-  Rebasing onto main...
+Merge complete.
+  Merged: 1 PR (#42)
+  Remaining: 1 PR (#44 - queued for next run)
+
+Signaling completion...
+Done.
+```
+
+### Stacked PRs
+
+```
+$ /drummer
+
+Finding PRs with drummer-merge label...
+Found 3 PRs:
+  PR #42 "Fix validation bug" → main (CI ✓)
+  PR #43 "Add edge case tests" → ba/abc-123 (CI ✓)
+  PR #44 "Refactor validator" → main (CI ✓)
+
+Building dependency graph...
+  Stack 1: main ← #42 (ba/abc-123) ← #43 (ba/abc-456)
+  Stack 2: main ← #44
+  2 stacks found, processing Stack 1 (2 PRs)
+
+Running batch review on Stack 1...
+Collecting diffs: +547 -103 across 8 files
+Batch review complete: ✓ No issues
+
+Processing stack root: PR #42 (Fix validation bug)...
+  Verifying CI... ✓
+  Rebasing onto main... clean
+  Squash merging... ✓
+  Verifying task closure... ✓
+
+Processing stack child: PR #43 (Add edge case tests)...
+  Verifying CI... ✓
+  Updating base branch to main... done
+  Rebasing onto main... clean
   Conflict in .ba/issues.jsonl (expected)
   Resolving: keeping all task closures
   Squash merging... ✓
+  Verifying task closure... ✓
 
-Merge train complete.
+Stack merged.
   Merged: 2 PRs (#42, #43)
-  Skipped: 1 PR (#44 - awaiting drummer-merge label)
+  Remaining: 1 PR (#44 - queued for next run)
 
 Signaling completion...
 Done.
