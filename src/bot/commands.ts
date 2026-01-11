@@ -730,14 +730,16 @@ async function handleDrummer(ctx: Context): Promise<void> {
     return;
   }
 
-  // Check if a drummer session is already running
+  // Check if a drummer session is already running for THIS project
+  // Drummer tmux names follow pattern: <projectName>-drummer-<timestamp>
   const sessions = getAllSessions();
+  const drummerPrefix = `${projectName}-drummer-`;
   const existingDrummer = sessions.find(
-    (s) => s.skill === "drummer" && s.status === "running"
+    (s) => s.skill === "drummer" && s.status === "running" && s.tmuxName.startsWith(drummerPrefix)
   );
   if (existingDrummer) {
     await ctx.reply(
-      `Drummer session already running: \`${existingDrummer.tmuxName}\``,
+      `Drummer session already running for ${projectName}: \`${existingDrummer.tmuxName}\``,
       { parse_mode: "Markdown" }
     );
     return;
