@@ -1,11 +1,11 @@
 ---
 name: notes
-description: Address human PR comments, checkout branch, resolve feedback, push fixes
+description: Address PR comments, checkout branch, resolve feedback, push fixes
 ---
 
 # Notes
 
-Director's notes to ractors. Address human feedback on a PR - checkout branch, resolve comments, push fixes.
+Director's notes to ractors. Address feedback on a PR - checkout branch, resolve comments, push fixes.
 
 ## Invocation
 
@@ -37,10 +37,10 @@ Director's notes to ractors. Address human feedback on a PR - checkout branch, r
    gh api repos/{owner}/{repo}/pulls/<pr-number>/comments
    ```
 
-4. Identify unresolved human comments:
-   - Filter out bot comments (CodeRabbit, etc.)
+4. Identify unresolved comments:
    - Focus on actionable feedback requiring code changes
    - Ignore resolved/outdated comments
+   - Skip non-actionable noise (e.g., "Thanks for the PR!")
 
 5. For each unresolved comment:
    a. Understand the feedback
@@ -150,10 +150,10 @@ Switched to branch 'ba/abc-123'
 
 Fetching comments...
 Found 4 comments:
-  1. [human] "Add null check before accessing user.email" (line 45)
-  2. [human] "This error message could be clearer" (line 72)
-  3. [coderabbit] "Consider using optional chaining" → skipping (bot)
-  4. [human] "Why not use the existing validate() function?" → needs decision
+  1. "Add null check before accessing user.email" (line 45)
+  2. "This error message could be clearer" (line 72)
+  3. [coderabbit] "Consider using optional chaining" (line 45)
+  4. "Why not use the existing validate() function?" → needs decision
 
 Addressing comment 1: Add null check...
 Staging changes...
@@ -161,6 +161,11 @@ Running sg review...
 No issues found.
 
 Addressing comment 2: Improve error message...
+Staging changes...
+Running sg review...
+No issues found.
+
+Addressing comment 3: Use optional chaining...
 Staging changes...
 Running sg review...
 No issues found.
@@ -173,6 +178,7 @@ Committing fixes...
 
   - Add null check before accessing user.email
   - Improve error message clarity
+  - Use optional chaining per CodeRabbit suggestion
 
 Pushing...
 To github.com:org/repo.git
@@ -181,8 +187,7 @@ To github.com:org/repo.git
 Signaling blocked (comment 4 needs decision)...
 
 Done.
-  Addressed: 2 comments
-  Skipped: 1 (bot comment)
+  Addressed: 3 comments
   Blocked: 1 (comment about validate() function)
 
 PR: https://github.com/org/repo/pull/42
