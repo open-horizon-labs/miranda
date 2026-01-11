@@ -18,46 +18,50 @@ Use `--base` for stacked PRs where this task depends on another in-flight PR.
 
 ## Flow
 
-1. Pull latest changes:
+1. Determine the target branch for claiming:
+   - If `--base <branch>` specified: use `<branch>` (strip `origin/` prefix if present)
+   - Otherwise: use `main`
+2. Sync with target branch from origin:
    ```bash
    git fetch origin
-   git pull origin main  # or <base-branch> if using --base
+   git checkout -B <target-branch> origin/<target-branch>
    ```
-2. `ba claim <task-id> --session $$`
-3. Commit and push claim to main (makes claim visible to other workers):
+   The `-B` flag creates the branch if missing, or resets it to match origin.
+3. `ba claim <task-id> --session $$`
+4. Commit and push claim to target branch (makes claim visible to other workers):
    ```bash
    git add .ba/
    git commit -m "claim: <task-id>"
-   git push origin main
+   git push origin <target-branch>
    ```
-4. Read dive context (if available) for project background:
+5. Read dive context (if available) for project background:
    ```bash
    cat .wm/dive_context.md 2>/dev/null || echo "No dive context"
    ```
    This provides architecture decisions, conventions, and session intent.
-5. Read and understand the task:
+6. Read and understand the task:
    - `ba show <task-id>` to get full details
    - Think through the approach
    - Ask clarifying questions if requirements are ambiguous
    - Only proceed when confident in the approach
-6. Create worktree from base branch:
+7. Create worktree from base branch:
    ```bash
    git fetch origin
-   git worktree add .worktrees/<task-id> -b ba/<task-id> --no-track <base-branch>
+   git worktree add .worktrees/<task-id> -b ba/<task-id> --no-track origin/<target-branch>
    cd .worktrees/<task-id>
    sg init
    ```
-   Where `<base-branch>` is `--base` argument or `origin/main` if not specified.
-7. Work until task is complete
-8. Stage changes (`git add`)
-9. Run `sg review` on staged changes (do NOT use code-reviewer agent)
-10. Handle review findings:
-   - P1-P3 trivial: fix inline, re-stage, re-review
-   - P1-P3 non-trivial: `ba create` as descendant task
-   - P4: discard (nitpick)
-11. `ba finish <task-id>`
-12. Commit code + `.ba/` changes together (task closure travels with code)
-13. **CRITICAL: Complete ALL descendant tasks before PR.**
+   The worktree bases off `origin/<target-branch>` (remote ref), where `<target-branch>` is what was determined in step 1.
+8. Work until task is complete
+9. Stage changes (`git add`)
+10. Run `sg review` on staged changes (do NOT use code-reviewer agent)
+11. Handle review findings:
+    - P1-P3 trivial: fix inline, re-stage, re-review
+    - P1-P3 non-trivial: `ba create` as descendant task
+    - P4: discard (nitpick)
+12. `ba finish <task-id>`
+13. Commit code + `.ba/` changes together (task closure travels with code)
+14. **CRITICAL: Complete ALL descendant tasks before PR.**
     Any `ba create` during this session = descendant that blocks PR.
     No "follow-ups" - if you create it, you work it now.
 
@@ -69,10 +73,10 @@ Use `--base` for stacked PRs where this task depends on another in-flight PR.
     - Handle findings (may spawn more descendants)
     - `ba finish`, commit code + `.ba/`
     - Loop until zero unclosed descendants
-14. ALL tasks closed → push and create PR:
+15. ALL tasks closed → push and create PR:
     ```bash
     git push -u origin ba/<task-id>
-    gh pr create --base <base-branch> --title "<original-task-title>" --body "$(cat <<'EOF'
+    gh pr create --base <target-branch> --title "<original-task-title>" --body "$(cat <<'EOF'
     ## Completed Tasks
     - <task-id>: <title>
     - <descendant-1>: <title>
@@ -85,7 +89,7 @@ Use `--base` for stacked PRs where this task depends on another in-flight PR.
     ```
     Where `--base` is `main` (default) or the branch specified via `--base` arg.
     For stacked PRs, this creates a chain: task-2 PR targets ba/task-1, etc.
-15. Wait for CodeRabbit review, then iterate:
+16. Wait for CodeRabbit review, then iterate:
     - `gh pr view <pr-number> --comments` to check for CodeRabbit feedback
     - Handle like sg findings:
       - Trivial: fix inline
@@ -98,7 +102,7 @@ Use `--base` for stacked PRs where this task depends on another in-flight PR.
       - `ba finish` if task, commit code + `.ba/`
     - Push all changes
     - Repeat until CodeRabbit has no new comments
-16. Return to main repo and signal completion (if `$MIRANDA_PORT` is set):
+17. Return to main repo and signal completion (if `$MIRANDA_PORT` is set):
     ```bash
     cd <original-dir>
     curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
@@ -106,11 +110,11 @@ Use `--base` for stacked PRs where this task depends on another in-flight PR.
       -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\", \"pr\": \"<pr-url>\"}"
     ```
     **CRITICAL:** Signal BEFORE cleanup. If still in worktree when it's deleted, curl fails.
-17. Cleanup worktree:
+18. Cleanup worktree:
     ```bash
     git worktree remove .worktrees/<task-id>
     ```
-18. Exit and report PR URL
+19. Exit and report PR URL
 
 ## Git Workflow
 
@@ -212,12 +216,15 @@ Done.
 
 ```
 $ /mouse abc-123
+# Claims abc-123 on main, pushes to main
 # Creates PR #42: ba/abc-123 → main
 
 $ /mouse abc-456 --base ba/abc-123
+# Checks out ba/abc-123, claims abc-456 there, pushes to ba/abc-123
 # Creates PR #43: ba/abc-456 → ba/abc-123
 
 $ /mouse abc-789 --base ba/abc-456
+# Checks out ba/abc-456, claims abc-789 there, pushes to ba/abc-456
 # Creates PR #44: ba/abc-789 → ba/abc-456
 
 $ /drummer
