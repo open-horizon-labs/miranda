@@ -21,12 +21,12 @@ Use `--base` for stacked PRs where this task depends on another in-flight PR.
 1. Determine the target branch for claiming:
    - If `--base <branch>` specified: use `<branch>` (strip `origin/` prefix if present)
    - Otherwise: use `main`
-2. Pull latest changes from target branch:
+2. Sync with target branch from origin:
    ```bash
    git fetch origin
-   git checkout <target-branch>
-   git pull origin <target-branch>
+   git checkout -B <target-branch> origin/<target-branch>
    ```
+   The `-B` flag creates the branch if missing, or resets it to match origin.
 3. `ba claim <task-id> --session $$`
 4. Commit and push claim to target branch (makes claim visible to other workers):
    ```bash
