@@ -9,17 +9,17 @@ A small autonomous worker from the Mouse Army. Claims a task, works it to comple
 
 ## Invocation
 
-`/mouse <task-id> [--base <branch>]`
+`/mouse <task-id> [branch]`
 
 - `<task-id>` - the ba task to work on
-- `--base <branch>` - optional base branch (default: `origin/main`)
+- `[branch]` - optional base branch (default: `origin/main`)
 
-Use `--base` for stacked PRs where this task depends on another in-flight PR.
+Use `[branch]` for stacked PRs where this task depends on another in-flight PR.
 
 ## Flow
 
 1. Determine the target branch for claiming:
-   - If `--base <branch>` specified: use `<branch>` (strip `origin/` prefix if present)
+   - If `[branch]` specified: use that branch (strip `origin/` prefix if present)
    - Otherwise: use `main`
 2. Sync with target branch from origin:
    ```bash
@@ -87,7 +87,7 @@ Use `--base` for stacked PRs where this task depends on another in-flight PR.
     EOF
     )"
     ```
-    Where `--base` is `main` (default) or the branch specified via `--base` arg.
+    Where `<base-branch>` is `main` (default) or the branch specified as second argument.
     For stacked PRs, this creates a chain: task-2 PR targets ba/task-1, etc.
 16. Wait for CodeRabbit review, then iterate:
     - `gh pr view <pr-number> --comments` to check for CodeRabbit feedback
@@ -219,11 +219,11 @@ $ /mouse abc-123
 # Claims abc-123 on main, pushes to main
 # Creates PR #42: ba/abc-123 → main
 
-$ /mouse abc-456 --base ba/abc-123
+$ /mouse abc-456 ba/abc-123
 # Checks out ba/abc-123, claims abc-456 there, pushes to ba/abc-123
 # Creates PR #43: ba/abc-456 → ba/abc-123
 
-$ /mouse abc-789 --base ba/abc-456
+$ /mouse abc-789 ba/abc-456
 # Checks out ba/abc-456, claims abc-789 there, pushes to ba/abc-456
 # Creates PR #44: ba/abc-789 → ba/abc-456
 

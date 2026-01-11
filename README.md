@@ -104,7 +104,7 @@ claude plugin install miranda@miranda
 
 | Command | Action |
 |---------|--------|
-| `/mouse <task>` | Start mouse skill for a task |
+| `/mouse <task> [branch]` | Start mouse skill for a task |
 | `/drummer` | Run batch merge |
 | `/status` | Show active sessions |
 | `/stop <task>` | Kill a session |

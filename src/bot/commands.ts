@@ -43,14 +43,24 @@ function normalizeDashes(input: string): string {
 
 /**
  * Parse /mouse command arguments.
- * Format: /mouse <task-id> [--base <branch>]
+ * Format: /mouse <task-id> [branch]
+ * Also handles legacy --base flag for backward compatibility.
  */
 function parseMouseArgs(input: string): MouseArgs | null {
   const normalized = normalizeDashes(input.trim());
   if (!normalized) return null;
 
-  // Match: taskId followed by optional --base <branch>
-  const match = normalized.match(/^(\S+)(?:\s+--base\s+(\S+))?$/);
+  // Handle legacy --base syntax for backward compatibility
+  const legacyMatch = normalized.match(/^(\S+)\s+--base\s+(\S+)$/);
+  if (legacyMatch) {
+    return {
+      taskId: legacyMatch[1],
+      baseBranch: legacyMatch[2],
+    };
+  }
+
+  // Match: taskId followed by optional branch (positional)
+  const match = normalized.match(/^(\S+)(?:\s+(\S+))?$/);
   if (!match) return null;
 
   return {
@@ -404,7 +414,7 @@ async function handleMouse(ctx: Context): Promise<void> {
   const input = ctx.match?.toString() ?? "";
   const args = parseMouseArgs(input);
   if (!args) {
-    await ctx.reply("Usage: /mouse <task-id> [--base <branch>]");
+    await ctx.reply("Usage: /mouse <task-id> [branch]");
     return;
   }
 

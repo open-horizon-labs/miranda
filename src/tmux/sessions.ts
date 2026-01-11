@@ -97,7 +97,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       if (baseBranch) {
         validateBranchSafe(baseBranch, "baseBranch");
       }
-      const baseArg = baseBranch ? ` --base ${baseBranch}` : "";
+      const baseArg = baseBranch ? ` ${baseBranch}` : "";
       return {
         tmuxName: getTmuxName(taskId),
         skillInvocation: `mouse ${taskId}${baseArg}`,

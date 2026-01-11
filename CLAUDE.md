@@ -85,7 +85,7 @@ src/
 | `/reset <project>` | Hard reset project to origin (with confirmation) |
 | `/tasks <project>` | List tasks for a project |
 | `/newproject <repo>` | Clone GitHub repo and init ba/sg |
-| `/mouse <task>` | Start mouse skill for task |
+| `/mouse <task> [branch]` | Start mouse skill for task |
 | `/drummer <project>` | Run batch merge skill |
 | `/notes <project> <pr>` | Address human PR feedback |
 | `/status` | Show all active sessions |
