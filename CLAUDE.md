@@ -87,7 +87,8 @@ src/
 | `/newproject <repo>` | Clone GitHub repo and init ba/sg |
 | `/mouse <task> [branch]` | Start mouse skill for ba task |
 | `/ohtask <project> <issue> [branch]` | Start oh-task skill for GitHub issue |
-| `/drummer <project>` | Run batch merge skill |
+| `/drummer <project>` | Batch merge ba PRs (drummer-merge label) |
+| `/ohmerge <project>` | Batch merge GitHub issue PRs (oh-merge label) |
 | `/notes <project> <pr>` | Address human PR feedback |
 | `/status` | Show all active sessions |
 | `/logs <task>` | Show recent output |

@@ -1,7 +1,7 @@
 {
   "name": "miranda",
-  "version": "0.3.0",
-  "description": "Mouse, Drummer, Notes, and oh-task skills for autonomous task execution, batch PR merging, PR feedback, and GitHub issue handling",
+  "version": "0.4.0",
+  "description": "Mouse, Drummer, Notes, oh-task, and oh-merge skills for autonomous task execution, batch PR merging, PR feedback, GitHub issue handling, and GitHub issue PR merging",
   "author": {
     "name": "Open Horizon Labs",
     "email": "hi@ohl.dev",

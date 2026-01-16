@@ -204,6 +204,7 @@ export function registerCommands(bot: Bot<Context>, shutdown: ShutdownFn): void 
   bot.command("cleanup", handleCleanup);
   bot.command("killall", handleKillall);
   bot.command("drummer", handleDrummer);
+  bot.command("ohmerge", handleOhMerge);
   bot.command("notes", handleNotes);
   bot.command("ohtask", handleOhTask);
   bot.command("newproject", handleNewProject);
@@ -233,7 +234,8 @@ I give voice to the Primer. Commands:
 /reset <project> - Hard reset project to origin
 /mouse <task-id> - Start a mouse on a ba task
 /ohtask <project> <issue> - Start on a GitHub issue
-/drummer <project> - Run batch merge for project
+/drummer <project> - Batch merge ba PRs
+/ohmerge <project> - Batch merge GitHub issue PRs
 /notes <project> <pr> - Address PR feedback
 /status - Show active sessions
 /stop <session> - Stop a session
@@ -789,6 +791,78 @@ Reviewing PRs with \`drummer-merge\` label...`,
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await ctx.reply(`Failed to start drummer: ${message}`);
+  }
+}
+
+async function handleOhMerge(ctx: Context): Promise<void> {
+  const projectName = ctx.match?.toString().trim();
+  if (!projectName) {
+    await ctx.reply("Usage: /ohmerge <project>");
+    return;
+  }
+
+  const chatId = ctx.chat?.id;
+  if (!chatId) {
+    await ctx.reply("Error: Could not determine chat ID");
+    return;
+  }
+
+  // Validate project exists
+  const projects = await scanProjects();
+  const project = projects.find((p) => p.name === projectName);
+  if (!project) {
+    await ctx.reply(`Project \`${projectName}\` not found in PROJECTS_DIR`, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Check if an oh-merge session is already running for THIS project
+  const sessions = getAllSessions();
+  const ohMergePrefix = `${projectName}-oh-merge-`;
+  const existingOhMerge = sessions.find(
+    (s) => s.skill === "oh-merge" && s.status === "running" && s.tmuxName.startsWith(ohMergePrefix)
+  );
+  if (existingOhMerge) {
+    await ctx.reply(
+      `oh-merge session already running for ${projectName}: \`${existingOhMerge.tmuxName}\``,
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
+  await ctx.reply(`Starting oh-merge for \`${projectName}\`...`, {
+    parse_mode: "Markdown",
+  });
+
+  try {
+    const tmuxName = await spawnSession("oh-merge", undefined, chatId, {
+      projectPath: project.path,
+      projectName: project.name,
+    });
+
+    // Use tmuxName as the session key since oh-merge has no task ID
+    const session: Session = {
+      taskId: tmuxName,
+      tmuxName,
+      skill: "oh-merge",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(tmuxName, session);
+
+    const keyboard = new InlineKeyboard().text(`Stop ${tmuxName}`, `stop:${tmuxName}`);
+    await ctx.reply(
+      `oh-merge running for \`${projectName}\`
+Session: \`${tmuxName}\`
+
+Reviewing PRs with \`oh-merge\` label...`,
+      { parse_mode: "Markdown", reply_markup: keyboard }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`Failed to start oh-merge: ${message}`);
   }
 }
 

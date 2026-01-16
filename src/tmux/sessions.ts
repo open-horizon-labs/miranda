@@ -67,6 +67,15 @@ export function getOhTaskTmuxName(projectName: string, issueNumber: string): str
 }
 
 /**
+ * Generate the tmux session name for an oh-merge session
+ * Uses project name and timestamp for identification
+ */
+export function getOhMergeTmuxName(projectName: string): string {
+  const timestamp = Date.now();
+  return `${projectName}-oh-merge-${timestamp}`;
+}
+
+/**
  * Generate the tmux session name for a notes session
  * Uses project name and PR number for identification
  */
@@ -151,6 +160,16 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       return {
         tmuxName: getOhTaskTmuxName(projectName, taskId),
         skillInvocation: `oh-task ${taskId}${baseArg}`,
+      };
+    }
+    case "oh-merge": {
+      if (!projectName) {
+        throw new Error("spawnSession: projectName is required for oh-merge skill");
+      }
+      validateShellSafe(projectName, "projectName");
+      return {
+        tmuxName: getOhMergeTmuxName(projectName),
+        skillInvocation: "oh-merge",
       };
     }
     default: {
