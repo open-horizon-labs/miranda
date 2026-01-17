@@ -9,6 +9,9 @@ const execAsync = promisify(exec);
 // - mouse: "mouse-<taskId>"
 // - drummer: "<project>-drummer-<timestamp>"
 // - notes: "<project>-notes-<prNumber>"
+// - oh-task: "<project>-oh-task-<issueNumber>"
+// - oh-merge: "<project>-oh-merge-<timestamp>"
+// - oh-notes: "<project>-oh-notes-<prNumber>"
 // This allows easy identification of which project a session belongs to.
 
 // Pattern: alphanumeric, hyphens, underscores only (ba task IDs follow this)
@@ -81,6 +84,14 @@ export function getOhMergeTmuxName(projectName: string): string {
  */
 export function getNotesTmuxName(projectName: string, prNumber: string): string {
   return `${projectName}-notes-${prNumber}`;
+}
+
+/**
+ * Generate the tmux session name for an oh-notes session
+ * Uses project name and PR number for identification
+ */
+export function getOhNotesTmuxName(projectName: string, prNumber: string): string {
+  return `${projectName}-oh-notes-${prNumber}`;
 }
 
 // Re-export SkillType for consumers that import from sessions.ts
@@ -170,6 +181,20 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       return {
         tmuxName: getOhMergeTmuxName(projectName),
         skillInvocation: "oh-merge",
+      };
+    }
+    case "oh-notes": {
+      if (!taskId) {
+        throw new Error("spawnSession: PR number is required for oh-notes skill");
+      }
+      if (!projectName) {
+        throw new Error("spawnSession: projectName is required for oh-notes skill");
+      }
+      validateShellSafe(taskId, "prNumber");
+      validateShellSafe(projectName, "projectName");
+      return {
+        tmuxName: getOhNotesTmuxName(projectName, taskId),
+        skillInvocation: `oh-notes ${taskId}`,
       };
     }
     default: {
@@ -365,10 +390,16 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
       // - mouse-<taskId>
       // - <project>-drummer-<timestamp>
       // - <project>-notes-<pr>
+      // - <project>-oh-task-<number>
+      // - <project>-oh-merge-<timestamp>
+      // - <project>-oh-notes-<pr>
       .filter((session) =>
         session.name.startsWith("mouse-") ||
         /-drummer-\d+$/.test(session.name) ||
-        /-notes-\d+$/.test(session.name)
+        /-notes-\d+$/.test(session.name) ||
+        /-oh-task-\d+$/.test(session.name) ||
+        /-oh-merge-\d+$/.test(session.name) ||
+        /-oh-notes-\d+$/.test(session.name)
       );
   } catch (error) {
     // No tmux server running means no sessions

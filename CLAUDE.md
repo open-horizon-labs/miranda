@@ -89,7 +89,8 @@ src/
 | `/ohtask <project> <issue> [branch]` | Start oh-task skill for GitHub issue |
 | `/drummer <project>` | Batch merge ba PRs (drummer-merge label) |
 | `/ohmerge <project>` | Batch merge GitHub issue PRs (oh-merge label) |
-| `/notes <project> <pr>` | Address human PR feedback |
+| `/notes <project> <pr>` | Address ba PR feedback |
+| `/ohnotes <project> <pr>` | Address GitHub issue PR feedback |
 | `/status` | Show all active sessions |
 | `/logs <task>` | Show recent output |
 | `/stop <task>` | Kill a session |
