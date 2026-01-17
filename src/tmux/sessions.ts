@@ -350,15 +350,25 @@ export async function stopSession(tmuxName: string): Promise<boolean> {
 /**
  * Send text input to a tmux session (simulates user typing)
  *
+ * AIDEV-NOTE: Claude Code's AskUserQuestion TUI reads digits immediately
+ * and doesn't need Enter to submit. Sending Enter can cause issues.
+ * For AskUserQuestion responses, use sendEnter=false (default).
+ *
  * @param tmuxName - The tmux session name
- * @param text - The text to send (will be followed by Enter)
+ * @param text - The text to send
+ * @param sendEnter - Whether to send Enter after the text (default: false)
  */
-export async function sendKeys(tmuxName: string, text: string): Promise<void> {
+export async function sendKeys(
+  tmuxName: string,
+  text: string,
+  sendEnter = false
+): Promise<void> {
   validateShellSafe(tmuxName, "tmuxName");
 
   // Escape single quotes in the text for shell safety
   const escapedText = text.replace(/'/g, "'\\''");
-  await execAsync(`tmux send-keys -t ${tmuxName} '${escapedText}' Enter`);
+  const enterSuffix = sendEnter ? " Enter" : "";
+  await execAsync(`tmux send-keys -t ${tmuxName} '${escapedText}'${enterSuffix}`);
 }
 
 /**
