@@ -7,14 +7,14 @@ Telegram bot for remote Claude orchestration. The ractor who gives voice to the 
 | Component | Name | Reference |
 |-----------|------|-----------|
 | This bot | **Miranda** | The ractor who voices the Primer for Nell |
-| Task runner | **Mouse** | Small autonomous worker from the Mouse Army |
-| Batch merge | **Drummer** | The collective that processes in rhythm |
-| PR feedback | **Notes** | Director's notes to ractors |
+| Issue worker | **oh-task** | Works GitHub issues autonomously |
+| Batch merger | **oh-merge** | Merges issue PRs in rhythm |
+| PR feedback | **oh-notes** | Addresses review comments |
 
 ## What Miranda Does
 
 1. **Remote orchestration** - Start tasks, respond to questions, merge PRs from your phone
-2. **Project discovery** - List projects and tasks on the server
+2. **Project discovery** - List projects and GitHub issues on the server
 3. **Session management** - Spawn, monitor, and control Claude tmux sessions
 4. **Notifications** - Push alerts when Claude needs input (via Telegram)
 5. **Bootstrap** - Set up Claude Code on new machines (skills, hooks, plugins)
@@ -22,9 +22,9 @@ Telegram bot for remote Claude orchestration. The ractor who gives voice to the 
 ## Architecture
 
 ```
-Phone ↔ Telegram ↔ Miranda ↔ tmux sessions (Claude /mouse)
-                      ↑
-                PreToolUse hook (notify-miranda.sh)
+Phone <-> Telegram <-> Miranda <-> tmux sessions (Claude /oh-task)
+                          ^
+                    PreToolUse hook (notify-miranda.sh)
 ```
 
 ## Development
@@ -53,7 +53,7 @@ ALLOWED_USER_IDS=123,456    # Telegram user IDs (comma-separated)
 # Optional
 MIRANDA_PORT=3847           # HTTP port for hook notifications (default: 3847)
 SQLITE_PATH=./miranda.db    # SQLite database path
-PROJECTS_DIR=~/projects     # Directory to scan for ba projects (default: ~/projects)
+PROJECTS_DIR=~/projects     # Directory to scan for projects (default: ~/projects)
 MIRANDA_HOME=~/miranda      # Override Miranda project root (default: derived from module location)
 ```
 
@@ -63,7 +63,7 @@ MIRANDA_HOME=~/miranda      # Override Miranda project root (default: derived fr
 src/
 ├── index.ts           # Entry point, bot setup
 ├── bot/
-│   ├── commands.ts    # /mouse, /status, /drummer, etc.
+│   ├── commands.ts    # /ohtask, /status, /ohmerge, etc.
 │   └── callbacks.ts   # Inline keyboard handlers
 ├── tmux/
 │   └── sessions.ts    # tmux session management
@@ -76,27 +76,51 @@ src/
 
 ## Commands
 
+### GitHub Issue Workflow (Recommended)
+
+| Command | Action |
+|---------|--------|
+| `/ohtask <project> <issue> [branch]` | Start oh-task skill for GitHub issue |
+| `/ohmerge <project>` | Batch merge GitHub issue PRs (oh-merge label) |
+| `/ohnotes <project> <pr>` | Address GitHub issue PR feedback |
+
+### Project Management
+
 | Command | Action |
 |---------|--------|
 | `/projects` | List projects on server with task counts |
-| `/pull` | Pull all clean projects (skips dirty/active) |
-| `/selfupdate` | Pull and rebuild Miranda |
-| `/restart` | Graceful restart |
-| `/reset <project>` | Hard reset project to origin (with confirmation) |
 | `/tasks <project>` | List tasks for a project |
-| `/newproject <repo>` | Clone GitHub repo and init ba/sg |
-| `/mouse <task> [branch]` | Start mouse skill for ba task |
-| `/ohtask <project> <issue> [branch]` | Start oh-task skill for GitHub issue |
-| `/drummer <project>` | Batch merge ba PRs (drummer-merge label) |
-| `/ohmerge <project>` | Batch merge GitHub issue PRs (oh-merge label) |
-| `/notes <project> <pr>` | Address ba PR feedback |
-| `/ohnotes <project> <pr>` | Address GitHub issue PR feedback |
+| `/newproject <repo>` | Clone GitHub repo and init sg |
+| `/pull` | Pull all clean projects (skips dirty/active) |
+| `/reset <project>` | Hard reset project to origin (with confirmation) |
+
+### Session Management
+
+| Command | Action |
+|---------|--------|
 | `/status` | Show all active sessions |
 | `/logs <task>` | Show recent output |
 | `/stop <task>` | Kill a session |
 | `/cleanup` | Remove orphaned tmux sessions |
 | `/killall` | Kill all sessions (with confirmation) |
+
+### System
+
+| Command | Action |
+|---------|--------|
+| `/selfupdate` | Pull and rebuild Miranda |
+| `/restart` | Graceful restart |
 | `/ssh` | Get SSH command for manual access |
+
+### Legacy ba Workflow (Deprecated)
+
+> These commands use the ba task tracking system. For new projects, use the GitHub issue workflow above.
+
+| Command | Action |
+|---------|--------|
+| `/mouse <task> [branch]` | Start mouse skill for ba task |
+| `/drummer <project>` | Batch merge ba PRs (drummer-merge label) |
+| `/notes <project> <pr>` | Address ba PR feedback |
 
 ### `/newproject` Details
 
@@ -111,8 +135,7 @@ Clones a GitHub repository and initializes development tools in one step.
 
 **What happens:**
 1. Clones to `$PROJECTS_DIR/<repo-name>` via `gh repo clone`
-2. Runs `ba init` (task tracking)
-3. Runs `sg init` (superego)
+2. Runs `sg init` (superego)
 
 **Notes:**
 - GitHub only (uses `gh` CLI)
@@ -147,9 +170,8 @@ curl -X POST http://localhost:3847/notify \
 
 | Component | Source | Purpose |
 |-----------|--------|---------|
-| **Skills** | Copy from local or git repo | mouse, drummer, dive-prep, playbook |
+| **Skills** | Copy from local or git repo | oh-task, oh-merge, oh-notes, dive-prep, playbook |
 | **Hooks** | Miranda repo | notify-miranda.sh for notifications |
-| **ba** | cargo install | Task tracking |
 | **sg** | cargo install | Superego metacognitive advisor |
 | **wm** | cargo install | Working memory |
 | **MCP servers** | claude mcp add | oh-mcp, context7, etc. |
@@ -174,15 +196,15 @@ ssh hetzner
 ```
 ~/.claude/
 ├── skills/
-│   ├── mouse/SKILL.md
-│   ├── drummer/SKILL.md
+│   ├── oh-task/SKILL.md
+│   ├── oh-merge/SKILL.md
+│   ├── oh-notes/SKILL.md
 │   └── ...
 ├── hooks/
 │   └── notify-miranda.sh
 └── settings.json (with hooks configured)
 
 # Also installed:
-ba --version    # Task tracking
 sg --version    # Superego
 wm --version    # Working memory
 ```
@@ -266,31 +288,3 @@ sudo systemctl status miranda@miranda
 # View logs
 journalctl -u miranda@miranda -f
 ```
-
-## Implementation Phases
-
-### Phase 1: MVP (Dogfood)
-- [ ] tmux session spawning (`/mouse`)
-- [ ] HTTP endpoint for hook notifications
-- [ ] Inline keyboard for question responses
-- [ ] Callback → tmux send-keys
-- [ ] `/status` command
-
-### Phase 2: Discovery
-- [ ] `/projects` - list projects on server
-- [ ] `/tasks <project>` - list tasks with inline selection
-- [ ] `/drummer` command
-
-### Phase 3: Bootstrap
-- [ ] `bootstrap.sh` script
-- [ ] Skills copying
-- [ ] ba/sg/wm installation
-- [ ] Hook setup
-- [ ] MCP server configuration
-
-### Phase 4: Polish
-- [ ] `/logs` streaming
-- [ ] SQLite state persistence
-- [ ] Message editing (update in place)
-- [ ] Error recovery
-- [ ] Session crash detection
