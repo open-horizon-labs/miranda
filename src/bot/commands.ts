@@ -1057,6 +1057,17 @@ async function handleOhTask(ctx: Context): Promise<void> {
     return;
   }
 
+  // Pull latest changes before starting
+  await ctx.reply(`Pulling ${projectName}...`);
+  const pullResult = await pullProject(projectPath);
+  if (!pullResult.success) {
+    await ctx.reply(`Failed to pull ${projectName}: ${pullResult.error}`);
+    return;
+  }
+  if (pullResult.commits > 0) {
+    await ctx.reply(`Pulled ${pullResult.commits} commit(s)`);
+  }
+
   // Use project + issue number as session key
   const sessionKey = `oh-task-${projectName}-${normalizedIssue}`;
   const existing = getSession(sessionKey);
