@@ -260,6 +260,12 @@ export async function spawnSession(
   const cmd = `tmux new-session -d -s ${tmuxName}${startDirFlag} -e TMUX_SESSION=${tmuxName} -e MIRANDA_PORT=${config.hookPort} "${claudeCmd}"`;
 
   await execAsync(cmd);
+
+  // AIDEV-NOTE: Claude Code shows a daily popup that blocks skill execution.
+  // Wait for Claude to start, then send "2" to dismiss it.
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await execAsync(`tmux send-keys -t ${tmuxName} 2`);
+
   return tmuxName;
 }
 
