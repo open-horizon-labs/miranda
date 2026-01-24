@@ -19,6 +19,7 @@ Miranda lets you orchestrate Claude Code sessions from your phone via Telegram:
 | Name | Role | Reference |
 |------|------|-----------|
 | **Miranda** | Telegram bot | The ractor who voices the Primer |
+| **oh-plan** | Task planner | Investigates and creates GitHub issues |
 | **oh-task** | Issue worker | Works GitHub issues autonomously |
 | **oh-merge** | Batch merger | Merges GitHub issue PRs in rhythm |
 | **oh-notes** | PR feedback | Addresses review comments |
@@ -38,6 +39,13 @@ claude plugin install miranda@miranda
 ### Skills
 
 #### GitHub Issue Workflow (Recommended)
+
+**oh-plan** (`oh-plan '<task description>'`)
+- Takes a high-level task description
+- Investigates the codebase for relevant files and patterns
+- Asks clarifying questions via AskUserQuestion
+- Creates GitHub issue(s) with `oh-planned` label
+- Issues are ready for oh-task to work on
 
 **oh-task** (`oh-task <issue-number> [base-branch]`)
 - Claims a GitHub issue and works it to completion
@@ -132,6 +140,7 @@ claude plugin install miranda@miranda
 
 | Command | Action |
 |---------|--------|
+| `/ohplan <project> <description>` | Plan task and create GitHub issues |
 | `/ohtask <project> <issue> [branch]` | Start oh-task skill for GitHub issue |
 | `/ohmerge <project>` | Batch merge GitHub issue PRs (oh-merge label) |
 | `/ohnotes <project> <pr>` | Address GitHub issue PR feedback |

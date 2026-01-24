@@ -7,6 +7,7 @@ Telegram bot for remote Claude orchestration. The ractor who gives voice to the 
 | Component | Name | Reference |
 |-----------|------|-----------|
 | This bot | **Miranda** | The ractor who voices the Primer for Nell |
+| Task planner | **oh-plan** | Investigates and creates GitHub issues |
 | Issue worker | **oh-task** | Works GitHub issues autonomously |
 | Batch merger | **oh-merge** | Merges issue PRs in rhythm |
 | PR feedback | **oh-notes** | Addresses review comments |
@@ -80,6 +81,7 @@ src/
 
 | Command | Action |
 |---------|--------|
+| `/ohplan <project> <description>` | Plan task and create GitHub issues |
 | `/ohtask <project> <issue>... [--base branch]` | Start oh-task skill for GitHub issue(s) |
 | `/ohmerge <project>` | Batch merge GitHub issue PRs (oh-merge label) |
 | `/ohnotes <project> <pr>` | Address GitHub issue PR feedback |
@@ -170,7 +172,7 @@ curl -X POST http://localhost:3847/notify \
 
 | Component | Source | Purpose |
 |-----------|--------|---------|
-| **Skills** | Copy from local or git repo | oh-task, oh-merge, oh-notes, dive-prep, playbook |
+| **Skills** | Copy from local or git repo | oh-plan, oh-task, oh-merge, oh-notes, dive-prep, playbook |
 | **Hooks** | Miranda repo | notify-miranda.sh for notifications |
 | **sg** | cargo install | Superego metacognitive advisor |
 | **wm** | cargo install | Working memory |
@@ -196,6 +198,7 @@ ssh hetzner
 ```
 ~/.claude/
 ├── skills/
+│   ├── oh-plan/SKILL.md
 │   ├── oh-task/SKILL.md
 │   ├── oh-merge/SKILL.md
 │   ├── oh-notes/SKILL.md
