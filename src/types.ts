@@ -1,7 +1,7 @@
 // === Session State ===
 
 /** Supported skill types for Miranda */
-export type SkillType = "mouse" | "drummer" | "notes" | "oh-task" | "oh-merge" | "oh-notes";
+export type SkillType = "mouse" | "drummer" | "notes" | "oh-task" | "oh-merge" | "oh-notes" | "oh-plan";
 
 export interface Session {
   taskId: string;

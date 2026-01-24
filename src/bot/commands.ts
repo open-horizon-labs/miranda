@@ -209,6 +209,7 @@ export function registerCommands(bot: Bot<Context>, shutdown: ShutdownFn): void 
   bot.command("notes", handleNotes);
   bot.command("ohnotes", handleOhNotes);
   bot.command("ohtask", handleOhTask);
+  bot.command("ohplan", handleOhPlan);
   bot.command("newproject", handleNewProject);
   bot.command("pull", handlePull);
   bot.command("selfupdate", handleSelfUpdate);
@@ -236,6 +237,7 @@ I give voice to the Primer. Commands:
 /reset <project> - Hard reset project to origin
 /mouse <task-id> - Start a mouse on a ba task
 /ohtask <project> <issue>... - Start on GitHub issues
+/ohplan <project> <desc> - Plan and create GitHub issues
 /drummer <project> - Batch merge ba PRs
 /ohmerge <project> - Batch merge GitHub issue PRs
 /notes <project> <pr> - Address ba PR feedback
@@ -1207,6 +1209,96 @@ Examples:
     await ctx.reply(lines.join("\n"), { parse_mode: "Markdown", reply_markup: keyboard });
   } else {
     await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
+  }
+}
+
+async function handleOhPlan(ctx: Context): Promise<void> {
+  const input = ctx.match?.toString().trim() ?? "";
+
+  // Parse: <project> <description...>
+  // First word is project, rest is the description
+  const firstSpace = input.indexOf(" ");
+  if (firstSpace === -1 || firstSpace === input.length - 1) {
+    await ctx.reply(
+      `Usage: /ohplan <project> <task description>
+
+Example:
+  /ohplan miranda Add heartbeat monitoring for sessions`
+    );
+    return;
+  }
+
+  const projectName = input.slice(0, firstSpace);
+  const description = input.slice(firstSpace + 1).trim();
+
+  if (!description) {
+    await ctx.reply("Error: Task description is required");
+    return;
+  }
+
+  // Validate project exists in PROJECTS_DIR
+  const projectPath = `${config.projectsDir}/${projectName}`;
+  const projects = await scanProjects();
+  const projectExists = projects.some((p) => p.name === projectName);
+  if (!projectExists) {
+    await ctx.reply(`Error: Project \`${projectName}\` not found in ${config.projectsDir}`, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // Pull latest changes before starting
+  await ctx.reply(`Pulling ${projectName}...`);
+  const pullResult = await pullProject(projectPath);
+  if (!pullResult.success) {
+    await ctx.reply(`Failed to pull ${projectName}: ${pullResult.error}`);
+    return;
+  }
+  if (pullResult.commits > 0) {
+    await ctx.reply(`Pulled ${pullResult.commits} commit(s)`);
+  }
+
+  const chatId = ctx.chat?.id;
+  if (!chatId) {
+    await ctx.reply("Error: Could not determine chat ID");
+    return;
+  }
+
+  // Use timestamp-based session key since oh-plan creates issues, not works on them
+  const timestamp = Date.now();
+  const sessionKey = `oh-plan-${projectName}-${timestamp}`;
+
+  await ctx.reply(`Starting oh-plan for \`${projectName}\`...\n\nTask: _${description}_`, {
+    parse_mode: "Markdown",
+  });
+
+  try {
+    const tmuxName = await spawnSession("oh-plan", description, chatId, {
+      projectPath,
+      projectName,
+    });
+
+    const session: Session = {
+      taskId: sessionKey,
+      tmuxName,
+      skill: "oh-plan",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    const keyboard = new InlineKeyboard().text(`Stop ${sessionKey}`, `stop:${sessionKey}`);
+    await ctx.reply(
+      `oh-plan running for \`${projectName}\`
+Session: \`${tmuxName}\`
+
+Investigating and planning...`,
+      { parse_mode: "Markdown", reply_markup: keyboard }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`Failed to start oh-plan: ${message}`);
   }
 }
 

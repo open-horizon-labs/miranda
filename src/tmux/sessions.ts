@@ -94,6 +94,15 @@ export function getOhNotesTmuxName(projectName: string, prNumber: string): strin
   return `${projectName}-oh-notes-${prNumber}`;
 }
 
+/**
+ * Generate the tmux session name for an oh-plan session
+ * Uses project name and timestamp for identification
+ */
+export function getOhPlanTmuxName(projectName: string): string {
+  const timestamp = Date.now();
+  return `${projectName}-oh-plan-${timestamp}`;
+}
+
 // Re-export SkillType for consumers that import from sessions.ts
 export type { SkillType } from "../types.js";
 
@@ -195,6 +204,22 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       return {
         tmuxName: getOhNotesTmuxName(projectName, taskId),
         skillInvocation: `oh-notes ${taskId}`,
+      };
+    }
+    case "oh-plan": {
+      if (!taskId) {
+        throw new Error("spawnSession: description is required for oh-plan skill");
+      }
+      if (!projectName) {
+        throw new Error("spawnSession: projectName is required for oh-plan skill");
+      }
+      validateShellSafe(projectName, "projectName");
+      // taskId is the description - escape it for shell but don't validate pattern
+      // (descriptions contain spaces and special chars)
+      const escapedDescription = taskId.replace(/'/g, "'\\''");
+      return {
+        tmuxName: getOhPlanTmuxName(projectName),
+        skillInvocation: `oh-plan '${escapedDescription}'`,
       };
     }
     default: {
@@ -409,13 +434,15 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
       // - <project>-oh-task-<number>
       // - <project>-oh-merge-<timestamp>
       // - <project>-oh-notes-<pr>
+      // - <project>-oh-plan-<timestamp>
       .filter((session) =>
         session.name.startsWith("mouse-") ||
         /-drummer-\d+$/.test(session.name) ||
         /-notes-\d+$/.test(session.name) ||
         /-oh-task-\d+$/.test(session.name) ||
         /-oh-merge-\d+$/.test(session.name) ||
-        /-oh-notes-\d+$/.test(session.name)
+        /-oh-notes-\d+$/.test(session.name) ||
+        /-oh-plan-\d+$/.test(session.name)
       );
   } catch (error) {
     // No tmux server running means no sessions
