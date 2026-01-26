@@ -91,16 +91,96 @@ Issues created by oh-plan should be:
 
 ## Decomposition Strategy
 
-When a task is too large for a single issue:
+**Bias toward focused issues.** A well-scoped issue that does one thing well is better than a multifaceted issue that tries to do many things. When genuinely uncertain, prefer splitting - but don't create trivial issues.
 
-1. **Identify natural boundaries** - separate concerns, modules, or layers
-2. **Order by dependency** - what must be done first?
-3. **Create parent-child relationships**:
-   ```
-   Issue #1: "Add user preferences API endpoint"
-   Issue #2: "Add dark mode toggle UI" (Depends on #1)
-   Issue #3: "Persist theme preference across sessions" (Depends on #1)
-   ```
+### When to Split
+
+Split into multiple issues when ANY of these apply:
+
+- **Multiple modules with distinct concerns** - Each coherent subsystem change can be its own issue
+- **Mix of backend and frontend** - API changes and UI changes often work better as separate issues
+- **Testable in isolation** - If parts can be tested independently, they're candidates for separate issues
+- **Different risk profiles** - Risky changes shouldn't be bundled with straightforward ones
+
+### When NOT to Split
+
+Keep as one issue when:
+
+- **Integration is trivial** - Just wiring things together with a few lines of code
+- **Changes are tightly coupled** - Splitting would create issues that can't be tested alone
+- **The "integration" is obvious** - No complex error handling, no new edge cases
+- **Total scope is still reasonable** - Even combined, it's 2-4 hours of work
+
+### Integration Issues
+
+Consider a separate integration issue when connecting components involves:
+
+- Non-trivial error handling at boundaries
+- New edge cases that emerge from the combination
+- Complex state coordination between systems
+- A meaningful test surface (end-to-end flows worth testing explicitly)
+
+**Don't** create integration issues for:
+- Simple API calls with straightforward error handling
+- Passing data from one component to another
+- Standard CRUD wiring
+
+**Pattern when integration IS complex:**
+```
+Issue #1: "Add theme persistence API" (Foundation)
+Issue #2: "Add theme toggle component" (Feature)
+Issue #3: "Wire theme system with fallback handling" (Integration - Depends on #1, #2)
+  - Handle API failures gracefully
+  - System preference detection fallback
+  - Theme flicker prevention on load
+```
+
+### Decomposition Example
+
+**Task:** "Add dark mode support to the dashboard"
+
+**Over-decomposed (too many trivial issues):**
+```
+Issue #1: Add preferences API
+Issue #2: Add toggle component
+Issue #3: Add CSS variables
+Issue #4: Wire toggle to API
+Issue #5: Wire CSS to components
+Issue #6: Handle loading states
+```
+
+**Under-decomposed (one big issue):**
+```
+Issue #1: Add dark mode support (everything)
+```
+
+**Right-sized:**
+```
+Issue #1: "Add user preferences API with theme support" (Foundation)
+  - GET/POST /api/preferences
+  - Includes theme field
+
+Issue #2: "Add dark mode theming system" (Feature - Depends on #1)
+  - CSS custom properties for light/dark
+  - Theme toggle in settings
+  - Wire to preferences API
+  - Apply theme on app load
+
+Issue #3: "Handle theme edge cases" (Polish - Depends on #2)
+  - Only if complex: system preference fallback,
+    theme flicker prevention, etc.
+  - Skip if straightforward
+```
+
+### Dependency Notation
+
+Use "Depends on #N" in issue body:
+```
+## Goal
+Add dark mode theming system with toggle and persistence.
+
+**Depends on:** #1 (preferences API)
+```
 
 ## What NOT to Do
 
