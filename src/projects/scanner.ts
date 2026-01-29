@@ -17,8 +17,8 @@ interface BaTask {
 }
 
 /**
- * Scan PROJECTS_DIR for directories containing .ba/issues.jsonl
- * Returns project info with task counts (open + in_progress)
+ * Scan PROJECTS_DIR for git repositories.
+ * Returns project info with optional ba task counts (0 if no ba).
  */
 export async function scanProjects(): Promise<ProjectInfo[]> {
   const projectsDir = config.projectsDir;
@@ -40,16 +40,17 @@ export async function scanProjects(): Promise<ProjectInfo[]> {
       continue; // Symlink escapes projectsDir, skip
     }
 
-    const issuesPath = join(projectPath, ".ba", "issues.jsonl");
+    const gitPath = join(projectPath, ".git");
 
-    // Check if .ba/issues.jsonl exists
+    // Check if .git exists (is a git repo)
     try {
-      await access(issuesPath, constants.R_OK);
+      await access(gitPath, constants.R_OK);
     } catch {
-      continue; // Not a ba project
+      continue; // Not a git repo
     }
 
-    // Count tasks by status
+    // Count ba tasks if available (optional)
+    const issuesPath = join(projectPath, ".ba", "issues.jsonl");
     const counts = await countTasks(issuesPath);
     projects.push({
       name: entry,
