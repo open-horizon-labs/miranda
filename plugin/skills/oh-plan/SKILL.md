@@ -1,19 +1,124 @@
 ---
 name: oh-plan
-description: Investigate a task, ask clarifying questions, and create well-structured GitHub issues ready for oh-task
+description: Create GitHub issues from task descriptions or session context. Investigates when needed, skips when context exists.
 ---
 
 # oh-plan
 
-Takes a high-level task description, investigates the codebase, asks clarifying questions, and creates actionable GitHub issues ready for oh-task agents.
+Creates well-structured GitHub issues ready for oh-task agents. Works in two modes:
+
+1. **Task mode**: Investigates codebase, asks clarifying questions, creates issues
+2. **Session mode**: Reads existing `.oh/<session>.md` context, skips investigation, creates issues
 
 ## Invocation
 
-`/oh-plan "<task description>"`
+```bash
+# Task mode - investigate from scratch
+/oh-plan "Add dark mode support to the dashboard"
 
-Example: `/oh-plan "Add dark mode support to the dashboard"`
+# Session mode - use existing context from skills workflow
+/oh-plan auth-refactor
+```
 
-## Flow
+## Mode Detection
+
+At the start, check if the argument matches an existing session file:
+
+```
+If .oh/<arg>.md exists AND contains ## Solution Space:
+    → Session mode (skip investigation, use context)
+Else:
+    → Task mode (investigate, ask questions)
+```
+
+## Session Mode Flow
+
+When `.oh/<session>.md` exists with solution-space context:
+
+1. **Read session file** and extract:
+   - `## Aim` → Goal for issues
+   - `## Problem Space` → Constraints, terrain, assumptions
+   - `## Solution Space` → Selected approach, trade-offs accepted
+   - `## Problem Statement` → Framing (if present)
+
+2. **Skip investigation** - context already gathered by grounding skills
+
+3. **Skip clarifying questions** - decisions already made during solution-space
+
+4. **Decompose the selected solution** into right-sized issues:
+   - Use the Solution Space recommendation as the starting point
+   - Apply standard decomposition heuristics (see below)
+   - Aim for 1-4 hours of work per issue
+
+5. **Create GitHub issues** with enriched context from session:
+   ```bash
+   gh issue create --title "<title>" --label "oh-planned" --body "$(cat <<'EOF'
+   ## Goal
+
+   <from Aim section>
+
+   ## Context
+
+   <from Problem Space: constraints, terrain>
+   <from Solution Space: selected approach>
+
+   ## Acceptance Criteria
+
+   - [ ] <derived from solution trade-offs>
+   - [ ] <derived from aim feedback signals>
+
+   ## Trade-offs Accepted
+
+   <from Solution Space>
+
+   ## Notes
+
+   <from Problem Space assumptions>
+   EOF
+   )"
+   ```
+
+6. **Update session file** with created issues:
+   ```markdown
+   ## Plan
+   **Updated:** <timestamp>
+   **Issues:** #43, #44, #45
+   ```
+
+### Session Mode Example
+
+```
+$ /oh-plan auth-refactor
+
+Found session file: .oh/auth-refactor.md
+
+Reading context...
+- Aim: Users complete signup in under 60 seconds
+- Problem: Current flow has 5 steps, competitors have 2
+- Solution: Collapse to email + password, defer profile to post-signup
+- Trade-offs: Less data upfront, need progressive profiling later
+
+Decomposing into issues...
+
+Created 2 issues:
+
+#43: "Simplify signup to email + password only"
+  - Remove name, company, role fields from signup
+  - Add post-signup redirect to profile completion
+  - Depends on: none
+
+#44: "Add progressive profile completion flow"
+  - Prompt for missing fields on first dashboard visit
+  - Track completion percentage
+  - Depends on: #43
+
+Updated .oh/auth-refactor.md with issue links.
+Done. Issues ready for /oh-task.
+```
+
+## Task Mode Flow
+
+When no session file exists (current behavior):
 
 1. **Explore the codebase** to understand:
    - Project architecture and patterns
@@ -187,7 +292,8 @@ Add dark mode theming system with toggle and persistence.
 - Don't create issues for trivial changes (typo fixes, single-line changes)
 - Don't over-decompose - 10 tiny issues is worse than 2-3 well-scoped ones
 - Don't start implementation - oh-plan is for planning only
-- Don't skip the clarifying questions if scope is ambiguous
+- Don't skip the clarifying questions if scope is ambiguous (task mode)
+- Don't re-investigate when session context exists (session mode)
 
 ## Exit Conditions
 
@@ -196,8 +302,9 @@ Add dark mode theming system with toggle and persistence.
 | Issue(s) created successfully | `status: "success"` |
 | User cancelled during questions | `status: "error", error: "User cancelled"` |
 | Failed to create issue | `status: "error", error: "<reason>"` |
+| Session file missing solution-space | `status: "error", error: "Session missing Solution Space - run /solution-space first"` |
 
-## Example Session
+## Task Mode Example
 
 ```
 $ /oh-plan "Add heartbeat monitoring for tmux sessions"
@@ -249,3 +356,22 @@ Detect when tmux sessions stop responding and notify the user.
 Signaling completion...
 Done. Issue #67 ready for /oh-task.
 ```
+
+## Integration with Skills Workflow
+
+oh-plan works seamlessly with the Open Horizons skills workflow:
+
+```bash
+# Grounding phase (in skills workflow)
+/aim auth-refactor
+/problem-space auth-refactor
+/solution-space auth-refactor
+
+# Planning phase (oh-plan reads the context)
+/oh-plan auth-refactor          # Creates GitHub issues from session
+
+# Execution phase
+/oh-task 43                      # Work the issues
+```
+
+This avoids duplicating investigation work - the grounding skills gather context, oh-plan transforms it into trackable issues.
