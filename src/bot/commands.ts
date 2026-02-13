@@ -137,8 +137,8 @@ export async function spawnSession(
     throw new Error("No project path specified and no default project configured");
   }
 
-  // Get skill configuration
-  const skillConfig = getSkillConfig(skill, {
+  // Get skill configuration (reads and expands SKILL.md)
+  const skillConfig = await getSkillConfig(skill, {
     taskId,
     baseBranch: options?.baseBranch,
     projectName: options?.projectName,
@@ -160,8 +160,8 @@ export async function spawnSession(
     },
   });
 
-  // Send the skill invocation as the initial prompt
-  sendPrompt(agent, skillConfig.skillInvocation);
+  // Send the expanded skill content as the initial prompt
+  sendPrompt(agent, skillConfig.skillPrompt);
 
   return sessionId;
 }

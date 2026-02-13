@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { config } from "../config.js";
 import type { SkillType } from "../types.js";
 
@@ -147,8 +149,8 @@ export interface SpawnAgentOptions {
 
 /** Skill configuration */
 interface SkillConfig {
-  /** The prompt to send to the agent */
-  skillInvocation: string;
+  /** The expanded skill prompt to send to the agent */
+  skillPrompt: string;
 }
 
 /** Options for skill configuration */
@@ -159,11 +161,36 @@ interface SkillOptions {
 }
 
 /**
- * Get skill configuration based on skill type.
- * Returns the prompt string to send to the agent.
+ * Load and expand a skill's SKILL.md content.
+ * Reads from mirandaHome/plugin/skills/<skill-name>/SKILL.md,
+ * strips YAML frontmatter, and appends the arguments.
+ *
+ * This mimics how oh-my-pi's input-controller.ts expands skills.
  */
-function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
+async function loadSkillContent(skillName: string, args: string): Promise<string> {
+  const skillPath = join(config.mirandaHome, "plugin", "skills", skillName, "SKILL.md");
+
+  let content: string;
+  try {
+    content = await readFile(skillPath, "utf-8");
+  } catch (err) {
+    throw new Error(`Skill "${skillName}" not found at ${skillPath}. Ensure skills are installed via bootstrap.sh.`);
+  }
+
+  // Strip YAML frontmatter (--- ... ---)
+  const body = content.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+
+  // Append arguments only if provided
+  return args ? `${body}\n\nARGUMENTS: ${args}` : body;
+}
+
+/**
+ * Build arguments string for a skill based on options.
+ * Validates inputs and returns the arguments to append to the skill prompt.
+ */
+function buildSkillArgs(skill: SkillType, options: SkillOptions): string {
   const { taskId, baseBranch, projectName } = options;
+
   switch (skill) {
     case "mouse": {
       if (!taskId) {
@@ -173,20 +200,14 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       if (baseBranch) {
         validateBranchSafe(baseBranch, "baseBranch");
       }
-      const baseArg = baseBranch ? ` ${baseBranch}` : "";
-      return {
-        // No slash prefix - oh-my-pi RPC mode expects bare skill names
-        skillInvocation: `mouse ${taskId}${baseArg}`,
-      };
+      return baseBranch ? `${taskId} ${baseBranch}` : taskId;
     }
     case "drummer": {
       if (!projectName) {
         throw new Error("spawnAgent: projectName is required for drummer skill");
       }
       validateIdSafe(projectName, "projectName");
-      return {
-        skillInvocation: "drummer",
-      };
+      return "";  // drummer takes no arguments
     }
     case "notes": {
       if (!taskId) {
@@ -197,9 +218,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       }
       validateIdSafe(taskId, "prNumber");
       validateIdSafe(projectName, "projectName");
-      return {
-        skillInvocation: `notes ${taskId}`,
-      };
+      return taskId;
     }
     case "oh-task": {
       if (!taskId) {
@@ -213,19 +232,14 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       if (baseBranch) {
         validateBranchSafe(baseBranch, "baseBranch");
       }
-      const baseArg = baseBranch ? ` ${baseBranch}` : "";
-      return {
-        skillInvocation: `oh-task ${taskId}${baseArg}`,
-      };
+      return baseBranch ? `${taskId} ${baseBranch}` : taskId;
     }
     case "oh-merge": {
       if (!projectName) {
         throw new Error("spawnAgent: projectName is required for oh-merge skill");
       }
       validateIdSafe(projectName, "projectName");
-      return {
-        skillInvocation: "oh-merge",
-      };
+      return "";  // oh-merge takes no arguments
     }
     case "oh-notes": {
       if (!taskId) {
@@ -236,9 +250,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       }
       validateIdSafe(taskId, "prNumber");
       validateIdSafe(projectName, "projectName");
-      return {
-        skillInvocation: `oh-notes ${taskId}`,
-      };
+      return taskId;
     }
     case "oh-plan": {
       if (!taskId) {
@@ -249,15 +261,26 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       }
       validateIdSafe(projectName, "projectName");
       // taskId is the description - don't validate pattern (descriptions contain spaces)
-      return {
-        skillInvocation: `oh-plan ${taskId}`,
-      };
+      return taskId;
     }
     default: {
       const _exhaustive: never = skill;
       throw new Error(`spawnAgent: Unknown skill type: ${_exhaustive}`);
     }
   }
+}
+
+/**
+ * Get skill configuration based on skill type.
+ * Reads the SKILL.md content and expands it with arguments.
+ *
+ * In oh-my-pi RPC mode, slash commands don't work - we must send
+ * the expanded skill content as the prompt.
+ */
+async function getSkillConfig(skill: SkillType, options: SkillOptions): Promise<SkillConfig> {
+  const args = buildSkillArgs(skill, options);
+  const skillPrompt = await loadSkillContent(skill, args);
+  return { skillPrompt };
 }
 
 /**
