@@ -6,13 +6,13 @@ Telegram bot for remote Claude orchestration. The ractor who gives voice to the 
 
 ## What is Miranda?
 
-Miranda lets you orchestrate Claude Code sessions from your phone via Telegram:
+Miranda lets you orchestrate [oh-my-pi](https://github.com/open-horizon-labs/oh-my-pi) agent sessions from your phone via Telegram:
 
-- **Start autonomous tasks** - Spawn Claude workers that claim GitHub issues, work them in isolated branches, and create PRs
-- **Answer questions remotely** - When Claude needs input, get a notification and respond via inline buttons
+- **Start autonomous tasks** - Spawn agents that claim GitHub issues, work them in isolated branches, and create PRs
+- **Answer questions remotely** - When the agent needs input, get a Telegram notification and respond via inline buttons
 - **Batch merge PRs** - Review and merge multiple PRs as a cohesive batch
 - **Address PR feedback** - Handle review comments autonomously
-- **Monitor progress** - Check session status and logs from anywhere
+- **Monitor progress** - Check session status from anywhere
 
 ## Components
 
@@ -23,115 +23,145 @@ Miranda lets you orchestrate Claude Code sessions from your phone via Telegram:
 | **oh-task** | Issue worker | Works GitHub issues autonomously |
 | **oh-merge** | Batch merger | Merges GitHub issue PRs in rhythm |
 | **oh-notes** | PR feedback | Addresses review comments |
-
-## Claude Code Plugin
-
-Miranda includes skills for Claude Code that can be installed via the plugin marketplace:
-
-```bash
-# Add the marketplace
-claude plugin marketplace add cloud-atlas-ai/miranda
-
-# Install the plugin
-claude plugin install miranda@miranda
-```
-
-### Skills
-
-#### GitHub Issue Workflow (Recommended)
-
-**oh-plan** (`oh-plan '<task description>'`)
-- Takes a high-level task description
-- Investigates the codebase for relevant files and patterns
-- Asks clarifying questions via AskUserQuestion
-- Creates GitHub issue(s) with `oh-planned` label
-- Issues are ready for oh-task to work on
-
-**oh-task** (`oh-task <issue-number> [base-branch]`)
-- Claims a GitHub issue and works it to completion
-- Creates isolated git worktree on `issue/<number>` branch
-- Runs superego review before committing
-- Creates PR with "Closes #N" for auto-close
-- Handles stacked PRs when base-branch is specified
-
-**oh-merge** (`oh-merge`)
-- Finds all PRs with `oh-merge` label
-- Runs holistic batch review across all changes
-- Detects and handles stacked PRs
-- Squash merges in dependency order
-- GitHub auto-closes linked issues
-
-**oh-notes** (`oh-notes <pr-number>`)
-- Addresses review comments on GitHub issue PRs
-- Creates GitHub issues for descendant tasks (from sg review findings)
-- Works in isolated worktree, pushes fixes
-
-#### Legacy ba Workflow (Deprecated)
-
-> **Note:** The ba-based skills are deprecated. Use the GitHub issue workflow above for new projects.
-
-**mouse** (`mouse <task-id> [base-branch]`) - *Deprecated*
-- Claims a ba task and works it to completion
-- Use `oh-task` instead for GitHub issue-based workflow
-
-**drummer** (`drummer`) - *Deprecated*
-- Finds all PRs with `drummer-merge` label
-- Use `oh-merge` instead for GitHub issue-based workflow
-
-**notes** (`notes <pr-number>`) - *Deprecated*
-- Addresses review comments on ba task PRs
-- Use `oh-notes` instead for GitHub issue-based workflow
+| **jira-plan** | Jira planner | Creates Jira subtasks from context |
 
 ## Architecture
 
 ```
-Phone <-> Telegram <-> Miranda <-> tmux sessions (Claude /oh-task)
-                          ^
-                    PreToolUse hook (notify-miranda.sh)
+Phone <-> Telegram <-> Miranda <-> oh-my-pi agent processes (RPC mode)
+                                       |
+                                   JSON lines over stdin/stdout
 ```
 
-When Claude calls `AskUserQuestion`, a hook notifies Miranda, which sends a Telegram message with inline buttons. Your response is piped back to the tmux session.
+Miranda spawns oh-my-pi in RPC mode as child processes and communicates via JSON lines:
+- Agent questions arrive as `extension_ui_request` events on stdout
+- User responses are sent as `extension_ui_response` commands on stdin
+- Task completion is signaled via the `signal_completion` custom tool
+- Process exit without completion signal is treated as an error
+
+### Completion Signaling
+
+Skills call the `signal_completion` custom tool as their final action. Miranda watches for `tool_execution_end` events where `toolName === "signal_completion"` and extracts the structured payload (`status`, `pr`, `error`, `blocker`, `message`). This tool is installed to `~/.claude/tools/` and auto-discovered by oh-my-pi.
+
+## Prerequisites
+
+### Server Requirements
+
+| Requirement | Purpose | Install |
+|-------------|---------|---------|
+| **Node.js 20+** | Runs Miranda | [nodejs.org](https://nodejs.org) |
+| **pnpm** | Package manager | `npm install -g pnpm` |
+| **Bun** | Runs oh-my-pi agent | [bun.sh](https://bun.sh) |
+| **oh-my-pi** | Agent runtime | `bun install -g @oh-my-pi/pi-coding-agent` |
+| **gh CLI** | GitHub operations | [cli.github.com](https://cli.github.com) |
+| **superego** | Code review | `cargo install sg` |
+
+### Verify prerequisites
+
+```bash
+node --version      # >= 20
+pnpm --version
+bun --version
+omp --version       # oh-my-pi CLI
+gh auth status      # GitHub CLI, authenticated
+sg --version        # superego
+```
 
 ## Setup
 
-### Bot Setup
-
-1. Create a Telegram bot via [@BotFather](https://t.me/BotFather)
-2. Get your Telegram user ID (use [@userinfobot](https://t.me/userinfobot))
-3. Configure environment:
+### 1. Clone and install
 
 ```bash
-cp .env.example .env
-# Edit .env with your values:
-# TELEGRAM_BOT_TOKEN=xxx
-# ALLOWED_USER_IDS=123,456
-```
-
-### Server Setup
-
-```bash
-# Install dependencies
+git clone https://github.com/open-horizon-labs/miranda.git
+cd miranda
 pnpm install
-
-# Development
-pnpm dev
-
-# Production
 pnpm build
-pnpm start
 ```
 
-### Claude Code Setup
+### 2. Create a Telegram bot
 
-On the server where Claude runs:
+1. Message [@BotFather](https://t.me/BotFather) on Telegram
+2. Create a new bot, copy the token
+3. Get your Telegram user ID from [@userinfobot](https://t.me/userinfobot)
+
+### 3. Configure environment
 
 ```bash
-# Install the miranda plugin
-claude plugin marketplace add cloud-atlas-ai/miranda
-claude plugin install miranda@miranda
+mkdir -p ~/.config/miranda
+cat > ~/.config/miranda/env << 'EOF'
+TELEGRAM_BOT_TOKEN=<your-bot-token>
+ALLOWED_USER_IDS=<your-telegram-id>
+OMP_CLI_PATH=/home/<user>/.bun/bin/omp
+PROJECTS_DIR=~/projects
+PATH=/home/<user>/.bun/bin:/home/<user>/.cargo/bin:/home/<user>/.local/bin:/usr/local/bin:/usr/bin:/bin
+EOF
+```
 
-# Configure hook for notifications (in ~/.claude/settings.json)
-# The plugin handles this automatically
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | Yes | From @BotFather |
+| `ALLOWED_USER_IDS` | Yes | Comma-separated Telegram user IDs |
+| `OMP_CLI_PATH` | Yes | Path to oh-my-pi CLI binary (e.g., `/home/user/.bun/bin/omp`) |
+| `PROJECTS_DIR` | No | Directory to scan for projects (default: `~/projects`) |
+| `MIRANDA_HOME` | No | Override Miranda project root (default: derived from module location) |
+
+### 4. Install the signal_completion tool
+
+oh-my-pi discovers custom tools from `~/.claude/tools/`. The `signal_completion` tool must be installed there:
+
+```bash
+mkdir -p ~/.claude/tools
+cp plugin/tools/signal-completion.ts ~/.claude/tools/signal-completion.ts
+```
+
+### 5. Deploy with systemd (user-level)
+
+```bash
+mkdir -p ~/.config/systemd/user
+
+cat > ~/.config/systemd/user/miranda.service << 'EOF'
+[Unit]
+Description=Miranda - Telegram bot for remote Claude orchestration
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/miranda
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+
+Environment=NODE_ENV=production
+EnvironmentFile=%h/.config/miranda/env
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Enable lingering so service runs without active login (needs root, one-time)
+sudo loginctl enable-linger $(whoami)
+
+# Start
+systemctl --user daemon-reload
+systemctl --user enable miranda
+systemctl --user start miranda
+systemctl --user status miranda
+```
+
+### View logs
+
+```bash
+journalctl --user -u miranda -f
+```
+
+## Development
+
+```bash
+pnpm install       # Install dependencies
+pnpm dev           # Development with hot reload
+pnpm build         # Build for production
+pnpm typecheck     # Type checking
+pnpm start         # Run production build
 ```
 
 ## Telegram Commands
@@ -141,18 +171,18 @@ claude plugin install miranda@miranda
 | Command | Action |
 |---------|--------|
 | `/ohplan <project> <description>` | Plan task and create GitHub issues |
-| `/ohtask <project> <issue> [branch]` | Start oh-task skill for GitHub issue |
-| `/ohmerge <project>` | Batch merge GitHub issue PRs (oh-merge label) |
-| `/ohnotes <project> <pr>` | Address GitHub issue PR feedback |
+| `/ohtask <project> <issue>... [--base branch]` | Work GitHub issue(s) autonomously |
+| `/ohmerge <project>` | Batch merge PRs with `oh-merge` label |
+| `/ohnotes <project> <pr>` | Address PR review feedback |
 
 ### Project Management
 
 | Command | Action |
 |---------|--------|
-| `/projects` | List projects on server with task counts |
-| `/tasks <project>` | List tasks for a project |
+| `/projects` | List projects on server |
 | `/newproject <repo>` | Clone GitHub repo and init sg |
 | `/pull` | Pull all clean projects |
+| `/reset <project>` | Hard reset project to origin (with confirmation) |
 
 ### Session Management
 
@@ -162,32 +192,49 @@ claude plugin install miranda@miranda
 | `/stop <task>` | Kill a session |
 | `/logs <task>` | Show recent output |
 | `/cleanup` | Remove orphaned sessions |
-| `/killall` | Kill all sessions |
+| `/killall` | Kill all sessions (with confirmation) |
 
 ### System
 
 | Command | Action |
 |---------|--------|
 | `/selfupdate` | Pull and rebuild Miranda |
-| `/restart` | Graceful restart |
-| `/reset <project>` | Hard reset project to origin |
-| `/ssh` | Get SSH command |
+| `/restart` | Graceful restart (systemd auto-restarts) |
+| `/ssh` | Get SSH command for manual access |
 
-### Legacy (Deprecated)
+## Project Structure
 
-| Command | Action |
-|---------|--------|
-| `/mouse <task> [branch]` | Start mouse skill for ba task |
-| `/drummer <project>` | Batch merge ba PRs |
-| `/notes <project> <pr>` | Address ba PR feedback |
+```
+src/
+├── index.ts           # Entry point, bot setup, callback routing
+├── config.ts          # Environment configuration
+├── types.ts           # Shared TypeScript types
+├── bot/
+│   ├── commands.ts    # Command handlers (/ohtask, /status, etc.)
+│   └── keyboards.ts   # Inline keyboard builders and parsers
+├── agent/
+│   ├── process.ts     # oh-my-pi RPC process management
+│   └── events.ts      # RPC event handlers (UI bridge, completion)
+├── state/
+│   └── sessions.ts    # SQLite session state management
+└── projects/
+    ├── scanner.ts     # Project discovery and git operations
+    └── clone.ts       # Repository cloning
 
-## Dependencies
+plugin/
+├── skills/            # Skill definitions (SKILL.md files)
+│   ├── oh-task/       # GitHub issue worker
+│   ├── oh-plan/       # Issue planner
+│   ├── oh-merge/      # Batch PR merger
+│   ├── oh-notes/      # PR feedback handler
+│   └── jira-plan/     # Jira subtask creator
+└── tools/
+    └── signal-completion.ts  # Custom tool for structured completion signaling
 
-Miranda works best with these tools installed on the server:
-
-- [superego](https://github.com/cloud-atlas-ai/superego) - Metacognitive code review
-- [gh](https://cli.github.com/) - GitHub CLI for PR and issue operations
-- [ba](https://github.com/cloud-atlas-ai/ba) - Task tracking (only for legacy workflow)
+scripts/
+├── bootstrap.sh       # Server setup script
+└── miranda.service    # systemd template service file
+```
 
 ## License
 
@@ -195,6 +242,6 @@ Source-available. See [LICENSE](LICENSE) for details.
 
 ## Related Projects
 
+- [oh-my-pi](https://github.com/open-horizon-labs/oh-my-pi) - Agent runtime (spawned by Miranda)
 - [Open Horizons](https://github.com/cloud-atlas-ai/open-horizons) - Strategic alignment platform
 - [Superego](https://github.com/cloud-atlas-ai/superego) - Metacognitive advisor for AI assistants
-- [WM](https://github.com/cloud-atlas-ai/wm) - Working memory for AI assistants
