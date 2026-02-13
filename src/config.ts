@@ -32,11 +32,18 @@ export const config = {
   defaultProject: process.env.MIRANDA_DEFAULT_PROJECT ?? "",
   projectsDir: expandTilde(process.env.PROJECTS_DIR ?? "~/projects"),
   mirandaHome: getMirandaHome(),
+  // Path to oh-my-pi CLI (packages/coding-agent/dist/cli.js)
+  // Required for agent process management
+  ompCliPath: process.env.OMP_CLI_PATH ?? "",
 } as const;
 
 export function validateConfig(): void {
   if (!config.botToken) {
     console.error("TELEGRAM_BOT_TOKEN environment variable is required");
+    process.exit(1);
+  }
+  if (!config.ompCliPath) {
+    console.error("OMP_CLI_PATH environment variable is required (path to oh-my-pi CLI)");
     process.exit(1);
   }
   if (isNaN(config.hookPort)) {

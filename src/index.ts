@@ -1,14 +1,20 @@
 import { Bot } from "grammy";
 import { config, validateConfig } from "./config.js";
-import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback, discoverOrphanedSessions, executeKillall, handleResetCallback } from "./bot/commands.js";
+import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback, discoverOrphanedSessions, executeKillall, handleResetCallback, stopSession, killSession } from "./bot/commands.js";
 import { parseCallback, formatAnswer, buildQuestionKeyboard } from "./bot/keyboards.js";
 import { createHookServer, type HookServer } from "./hooks/server.js";
-import { sendKeys, killSession, stopSession } from "./tmux/sessions.js";
+import {
+  getAgent,
+  sendUIResponse,
+  getAllAgents,
+  killAgent,
+} from "./agent/process.js";
+import { setBot } from "./agent/events.js";
 import {
   getSession,
   setSession,
   deleteSession,
-  findSessionByTmuxName,
+  findSessionBySessionId,
   getRestartChatId,
   clearRestartChatId,
 } from "./state/sessions.js";
@@ -21,12 +27,15 @@ validateConfig();
 // Create bot instance
 const bot = new Bot(config.botToken);
 
+// Set bot instance for event handling (allows agent events to send Telegram messages)
+setBot(bot);
+
 // Hook server (created later, stored here for shutdown access)
 let hookServer: HookServer;
 
 /**
  * Graceful shutdown function.
- * Stops the bot and hook server, then exits the process.
+ * Stops the bot, hook server, and all agent processes, then exits.
  * systemd/PM2 will restart Miranda automatically.
  */
 export async function gracefulShutdown(): Promise<void> {
@@ -41,6 +50,14 @@ export async function gracefulShutdown(): Promise<void> {
     if (hookServer) {
       await hookServer.stop();
       console.log("   Hook server stopped");
+    }
+
+    // Kill all agent processes
+    const agents = getAllAgents();
+    if (agents.length > 0) {
+      console.log(`   Killing ${agents.length} agent process(es)...`);
+      await Promise.allSettled(agents.map((a) => killAgent(a, 1000)));
+      console.log("   Agent processes killed");
     }
 
     console.log("Miranda shutdown complete");
@@ -181,7 +198,7 @@ bot.on("callback_query:data", async (ctx) => {
 
     try {
       // Use graceful stop with fallback to kill
-      const graceful = await stopSession(session.tmuxName);
+      const graceful = await stopSession(session.sessionId);
       deleteSession(sessionKey);
       const method = graceful ? "stopped" : "killed";
       await ctx.answerCallbackQuery({ text: `Session ${method}` });
@@ -217,12 +234,17 @@ bot.on("callback_query:data", async (ctx) => {
   const questions = session.pendingQuestion.questions;
 
   if (action.type === "answer") {
-    // Send the selected option to tmux
+    // Send the selected option via RPC
     const answer = formatAnswer(action, questions);
     if (answer) {
       try {
-        await sendKeys(session.tmuxName, answer);
+        const agent = getAgent(session.sessionId);
+        if (agent && session.pendingUIRequestId) {
+          // Send UI response via RPC
+          sendUIResponse(agent, session.pendingUIRequestId, { value: answer });
+        }
         session.pendingQuestion = undefined;
+        session.pendingUIRequestId = undefined;
         session.status = "running";
         setSession(session.taskId, session);
         await ctx.answerCallbackQuery({ text: "Response sent!" });
@@ -252,9 +274,9 @@ bot.catch((err) => {
   console.error("Bot error:", err);
 });
 
-// Hook notification handler
+// Hook notification handler (legacy - for tmux sessions using Claude Code hooks)
 function handleNotification(notification: HookNotification): void {
-  const session = findSessionByTmuxName(notification.session);
+  const session = findSessionBySessionId(notification.session);
   if (!session) {
     console.warn(`Notification for unknown session: ${notification.session}`);
     return;
@@ -294,7 +316,7 @@ function handleNotification(notification: HookNotification): void {
 
 // Completion handler - called when skill finishes
 function handleCompletion(completion: CompletionNotification): void {
-  const session = findSessionByTmuxName(completion.session);
+  const session = findSessionBySessionId(completion.session);
   if (!session) {
     console.warn(`Completion for unknown session: ${completion.session}`);
     return;
@@ -302,15 +324,15 @@ function handleCompletion(completion: CompletionNotification): void {
 
   const taskId = session.taskId;
   const chatId = session.chatId;
-  const tmuxName = session.tmuxName;
+  const sessionId = session.sessionId;
 
   // Remove session from tracking immediately - the skill is done regardless of
   // whether we successfully notify the user. Telegram delivery is best-effort.
   deleteSession(taskId);
 
-  // Kill the tmux session - the skill has signaled completion, no need to keep it alive
-  killSession(tmuxName).catch((err) => {
-    console.error(`Failed to kill tmux session ${tmuxName}:`, err);
+  // Kill the agent process - the skill has signaled completion
+  killSession(sessionId).catch((err) => {
+    console.error(`Failed to kill agent session ${sessionId}:`, err);
   });
 
   // Send notification to Telegram
@@ -416,7 +438,7 @@ Promise.all([
     onStart: async (info) => {
       console.log(`   Bot: @${info.username}`);
 
-      // Discover orphaned tmux sessions and repopulate state
+      // Discover orphaned sessions (no-op for agent-based sessions)
       const orphanCount = await discoverOrphanedSessions();
       if (orphanCount > 0) {
         console.log(`   Discovered ${orphanCount} orphaned session(s)`);
@@ -426,10 +448,7 @@ Promise.all([
       const restartChatId = getRestartChatId();
       if (restartChatId) {
         clearRestartChatId();
-        const orphanMsg = orphanCount > 0
-          ? `\n\n_Discovered ${orphanCount} orphaned session(s) - run /status to see them_`
-          : "";
-        bot.api.sendMessage(restartChatId, `*Miranda is back online*${orphanMsg}`, {
+        bot.api.sendMessage(restartChatId, `*Miranda is back online*`, {
           parse_mode: "Markdown",
         }).catch((err) => {
           console.error("Failed to send back online message:", err);

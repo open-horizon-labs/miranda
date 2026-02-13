@@ -5,13 +5,16 @@ export type SkillType = "mouse" | "drummer" | "notes" | "oh-task" | "oh-merge" |
 
 export interface Session {
   taskId: string;
-  tmuxName: string; // e.g., "mouse-kv-xxld"
+  /** Session identifier - either a process ID (for agent) or tmux session name (legacy) */
+  sessionId: string;
   skill: SkillType;
   status: "starting" | "running" | "waiting_input" | "stopped";
   startedAt: Date;
   chatId: number; // Telegram chat for notifications
   pendingQuestion?: PendingQuestion;
   awaitingFreeText?: AwaitingFreeText;
+  /** Pending UI request ID from agent (for extension_ui_response) */
+  pendingUIRequestId?: string;
 }
 
 export interface PendingQuestion {
@@ -25,7 +28,7 @@ export interface AwaitingFreeText {
   promptMessageId: number;
 }
 
-// === AskUserQuestion Types (from Claude) ===
+// === AskUserQuestion Types (from Claude / oh-my-pi extension_ui) ===
 
 export interface Question {
   question: string;
@@ -39,7 +42,7 @@ export interface QuestionOption {
   description: string;
 }
 
-// === Hook Notification ===
+// === Hook Notification (Legacy - for tmux sessions using Claude Code hooks) ===
 
 export interface HookNotification {
   session: string; // tmux session name
@@ -57,16 +60,10 @@ export type CallbackAction =
   | { type: "answer"; taskId: string; questionIdx: number; optionIdx: number }
   | { type: "other"; taskId: string; questionIdx: number };
 
-// === tmux Commands ===
-
-// Skill invocation: claude '<skill> [args]' --dangerously-skip-permissions
-// e.g., "claude 'mouse kv-xxld' --dangerously-skip-permissions"
-// e.g., "claude 'drummer' --dangerously-skip-permissions"
-
 // === Completion Notification ===
 
 export interface CompletionNotification {
-  session: string; // tmux session name
+  session: string; // Session ID
   status: "success" | "error" | "blocked";
   pr?: string; // PR URL on success
   error?: string; // Error message on failure

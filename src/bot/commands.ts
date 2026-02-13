@@ -2,15 +2,17 @@ import { basename } from "path";
 import type { Bot, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import {
-  spawnSession,
-  killSession,
-  stopSession,
-  getTmuxName,
-  listTmuxSessions,
-  sendKeys,
-  type TmuxSession,
-  type SpawnOptions,
-} from "../tmux/sessions.js";
+  spawnAgent,
+  sendPrompt,
+  sendUIResponse,
+  killAgent,
+  getAgent,
+  getAllAgents,
+  getSkillConfig,
+  type AgentProcess,
+  type RpcEvent,
+} from "../agent/process.js";
+import { handleAgentEvent, handleAgentExit } from "../agent/events.js";
 import {
   getSession,
   setSession,
@@ -21,7 +23,7 @@ import {
 import { scanProjects, getProjectTasks, findProjectForTask, isRepoDirty, pullProject, updateProjectIfClean, selfUpdate, resetProject, getDefaultBranch, type TaskInfo, type UpdateResult, type SelfUpdateResult, type ResetResult } from "../projects/scanner.js";
 import { cloneAndInit } from "../projects/clone.js";
 import { config } from "../config.js";
-import type { Session } from "../types.js";
+import type { Session, SkillType } from "../types.js";
 
 /** Parsed mouse command arguments */
 interface MouseArgs {
@@ -95,81 +97,97 @@ export function buildTaskKeyboard(
   };
 }
 
-/**
- * Get orphaned tmux sessions (in tmux but not tracked in state).
- * Exported for use by callback handler.
- */
-export async function getOrphanedSessions(): Promise<TmuxSession[]> {
-  const sessions = getAllSessions();
-  const tmuxSessions = await listTmuxSessions();
-  const trackedNames = new Set(sessions.map((s) => s.tmuxName));
-  return tmuxSessions.filter((t) => !trackedNames.has(t.name));
-}
-
-/**
- * Kill all orphaned tmux sessions.
- * Returns the count of sessions killed.
- */
-export async function cleanupOrphanedSessions(): Promise<number> {
-  const orphaned = await getOrphanedSessions();
-  await Promise.allSettled(orphaned.map((t) => killSession(t.name)));
-  return orphaned.length;
-}
-
-/**
- * Discover orphaned tmux sessions on startup and repopulate state.
- * Creates Session objects with status='running' for any tmux sessions
- * that aren't tracked in state (e.g., after a restart).
- * Returns the count of sessions discovered.
- */
-export async function discoverOrphanedSessions(): Promise<number> {
-  const orphaned = await getOrphanedSessions();
-  let discovered = 0;
-
-  for (const tmux of orphaned) {
-    // Parse tmux session name to extract skill and taskId
-    // Patterns:
-    // - mouse-<taskId>
-    // - <project>-drummer-<timestamp>
-    // - <project>-notes-<pr>
-    let skill: "mouse" | "drummer" | "notes";
-    let taskId: string;
-
-    if (tmux.name.startsWith("mouse-")) {
-      skill = "mouse";
-      taskId = tmux.name.slice(6); // Remove "mouse-" prefix
-    } else if (/-drummer-\d+$/.test(tmux.name)) {
-      skill = "drummer";
-      taskId = tmux.name; // Use full name as ID for drummer
-    } else if (/-notes-\d+$/.test(tmux.name)) {
-      skill = "notes";
-      taskId = tmux.name; // Use full name as ID for notes
-    } else {
-      // Unknown pattern, skip
-      continue;
-    }
-
-    // Create session with unknown status (we don't know if it's waiting for input)
-    const session: Session = {
-      taskId,
-      tmuxName: tmux.name,
-      skill,
-      status: "running", // Assume running, user can check /status
-      startedAt: new Date(parseInt(tmux.created, 10) * 1000), // tmux created is unix timestamp
-      chatId: 0, // Unknown - can't send notifications to this session
-    };
-    setSession(taskId, session);
-    discovered++;
-  }
-
-  return discovered;
-}
-
 /** Shutdown function type for /restart command */
 export type ShutdownFn = () => Promise<void>;
 
 // Stored shutdown function (set by registerCommands)
 let shutdownFn: ShutdownFn | undefined;
+
+/**
+ * Generate a unique session ID for a skill invocation.
+ * Format: <skill>-<identifier>-<timestamp>
+ */
+function generateSessionId(skill: SkillType, identifier: string): string {
+  const timestamp = Date.now();
+  return `${skill}-${identifier}-${timestamp}`;
+}
+
+/** Options for spawning a session */
+export interface SpawnOptions {
+  projectPath?: string;
+  baseBranch?: string;
+  projectName?: string;
+}
+
+/**
+ * Spawn a new agent session.
+ * Returns the session ID on success.
+ *
+ * Event handling is wired up automatically using handleAgentEvent and handleAgentExit
+ * from agent/events.ts, which routes extension_ui requests to Telegram.
+ */
+export async function spawnSession(
+  skill: SkillType,
+  taskId: string | undefined,
+  chatId: number,
+  options?: SpawnOptions
+): Promise<string> {
+  const projectPath = options?.projectPath ?? config.defaultProject;
+  if (!projectPath) {
+    throw new Error("No project path specified and no default project configured");
+  }
+
+  // Get skill configuration
+  const skillConfig = getSkillConfig(skill, {
+    taskId,
+    baseBranch: options?.baseBranch,
+    projectName: options?.projectName,
+  });
+
+  // Generate session ID
+  const identifier = taskId ?? options?.projectName ?? "unknown";
+  const sessionId = generateSessionId(skill, identifier);
+
+  // Spawn the agent with event handlers wired up
+  const agent = spawnAgent({
+    cwd: projectPath,
+    skill,
+    sessionId,
+    onEvent: (event: RpcEvent) => handleAgentEvent(agent, event),
+    onExit: (code, signal) => handleAgentExit(sessionId, code, signal),
+    onError: (err) => {
+      console.error(`[session:${sessionId}] Agent error:`, err);
+    },
+  });
+
+  // Send the skill invocation as the initial prompt
+  sendPrompt(agent, skillConfig.skillInvocation);
+
+  return sessionId;
+}
+
+/**
+ * Stop an agent session.
+ * Returns whether the stop was graceful.
+ */
+export async function stopSession(sessionId: string): Promise<boolean> {
+  const agent = getAgent(sessionId);
+  if (!agent) {
+    // Session not found - consider it already stopped
+    return true;
+  }
+  return killAgent(agent);
+}
+
+/**
+ * Kill an agent session immediately.
+ */
+export async function killSession(sessionId: string): Promise<void> {
+  const agent = getAgent(sessionId);
+  if (agent) {
+    await killAgent(agent, 0); // No grace period
+  }
+}
 
 /**
  * Register command handlers on the bot instance.
@@ -181,7 +199,7 @@ let shutdownFn: ShutdownFn | undefined;
  * - /mouse <task-id> - Spawn a mouse session
  * - /status - List all sessions
  * - /stop <session> - Kill a session (task-id or full session name)
- * - /cleanup - Remove orphaned tmux sessions
+ * - /cleanup - Remove orphaned sessions
  * - /killall - Kill all sessions with confirmation
  * - /drummer <project> - Run batch merge for a project
  * - /notes <project> <pr-number> - Address PR feedback (ba tasks)
@@ -394,11 +412,11 @@ export async function handleMouseCallback(
   await sendMessage(`Starting mouse for \`${projectName}: ${taskId}\`...`, { parse_mode: "Markdown" });
 
   try {
-    const tmuxName = await spawnSession("mouse", taskId, chatId, { projectPath });
+    const sessionId = await spawnSession("mouse", taskId, chatId, { projectPath });
 
     const session: Session = {
       taskId,
-      tmuxName,
+      sessionId,
       skill: "mouse",
       status: "running",
       startedAt: new Date(),
@@ -410,7 +428,7 @@ export async function handleMouseCallback(
     await sendMessage(
       `Mouse running for \`${taskId}\`
 Branch: \`ba/${taskId}\`
-Session: \`${tmuxName}\``,
+Session: \`${sessionId}\``,
       { parse_mode: "Markdown", reply_markup: keyboard }
     );
   } catch (error) {
@@ -472,11 +490,11 @@ async function handleMouse(ctx: Context): Promise<void> {
     if (baseBranch) {
       spawnOptions.baseBranch = baseBranch;
     }
-    const tmuxName = await spawnSession("mouse", taskId, chatId, spawnOptions);
+    const sessionId = await spawnSession("mouse", taskId, chatId, spawnOptions);
 
     const session: Session = {
       taskId,
-      tmuxName,
+      sessionId,
       skill: "mouse",
       status: "running",
       startedAt: new Date(),
@@ -488,7 +506,7 @@ async function handleMouse(ctx: Context): Promise<void> {
     await ctx.reply(
       `Mouse running for \`${taskId}\`
 Branch: \`ba/${taskId}\`${baseBranch ? `\nBase: \`${baseBranch}\`` : ""}
-Session: \`${tmuxName}\``,
+Session: \`${sessionId}\``,
       { parse_mode: "Markdown", reply_markup: keyboard }
     );
   } catch (error) {
@@ -499,9 +517,9 @@ Session: \`${tmuxName}\``,
 
 async function handleStatus(ctx: Context): Promise<void> {
   const sessions = getAllSessions();
-  const tmuxSessions = await listTmuxSessions();
+  const agents = getAllAgents();
 
-  if (sessions.length === 0 && tmuxSessions.length === 0) {
+  if (sessions.length === 0 && agents.length === 0) {
     await ctx.reply("*Remote Claude Status*\n\n_No active sessions_", {
       parse_mode: "Markdown",
     });
@@ -532,13 +550,13 @@ async function handleStatus(ctx: Context): Promise<void> {
     lines.push("");
   }
 
-  // Orphaned tmux sessions (in tmux but not in state)
-  const trackedNames = new Set(sessions.map((s) => s.tmuxName));
-  const orphaned = tmuxSessions.filter((t) => !trackedNames.has(t.name));
-  if (orphaned.length > 0) {
-    lines.push("*Orphaned (in tmux):*");
-    for (const t of orphaned) {
-      lines.push(`  \`${t.name}\``);
+  // Orphaned agents (in process map but not in session state)
+  const trackedSessionIds = new Set(sessions.map((s) => s.sessionId));
+  const orphanedAgents = agents.filter((a) => !trackedSessionIds.has(a.sessionId));
+  if (orphanedAgents.length > 0) {
+    lines.push("*Orphaned (running but untracked):*");
+    for (const a of orphanedAgents) {
+      lines.push(`  \`${a.sessionId}\` (pid: ${a.pid})`);
     }
   }
 
@@ -558,60 +576,72 @@ async function handleStatus(ctx: Context): Promise<void> {
 async function handleStop(ctx: Context): Promise<void> {
   const input = ctx.match?.toString().trim();
   if (!input) {
-    await ctx.reply("Usage: /stop <task-id or session-name>");
+    await ctx.reply("Usage: /stop <task-id or session-id>");
     return;
   }
 
-  // Check if input is a fully qualified session name:
-  // - mouse-<taskId>
-  // - <project>-drummer-<timestamp>
-  // - <project>-notes-<pr>
-  // Pattern: matches mouse-*, *-drummer-*, or *-notes-*
-  const isFullyQualified =
-    input.startsWith("mouse-") ||
-    /-drummer-\d+$/.test(input) ||
-    /-notes-\d+$/.test(input);
-
-  // Try to find session by input (works for both task IDs and tmux names)
+  // Try to find session by input (works for both task IDs and session IDs)
   const session = getSession(input);
-  let tmuxName: string;
 
   if (session) {
-    // Found in state - use its tmux name
-    tmuxName = session.tmuxName;
-  } else if (isFullyQualified) {
-    // Fully qualified name not in state - use directly
-    tmuxName = input;
-  } else {
-    // Bare task ID - construct mouse session name
-    tmuxName = getTmuxName(input);
-  }
-
-  try {
-    // Use graceful stop with fallback to kill
-    const graceful = await stopSession(tmuxName);
-    const method = graceful ? "stopped" : "killed";
-
-    if (session) {
+    // Found in state - stop by session ID
+    try {
+      const graceful = await stopSession(session.sessionId);
       deleteSession(input);
+      const method = graceful ? "stopped" : "killed";
       await ctx.reply(`Session \`${input}\` ${method}`, { parse_mode: "Markdown" });
-    } else {
-      await ctx.reply(`Tmux session \`${tmuxName}\` ${method} (was not tracked)`, {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await ctx.reply(`Failed to stop: ${message}`);
+    }
+  } else {
+    // Not in state - try to stop by session ID directly (might be orphaned)
+    try {
+      const graceful = await stopSession(input);
+      const method = graceful ? "stopped" : "killed";
+      await ctx.reply(`Session \`${input}\` ${method} (was not tracked)`, {
         parse_mode: "Markdown",
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await ctx.reply(`Failed to stop: ${message}`);
     }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await ctx.reply(`Failed to stop: ${message}`);
   }
 }
 
 /**
- * Find and remove orphaned tmux sessions.
- * Orphaned = tmux session exists (mouse-*, *-drummer-*, *-notes-*) but not tracked in state.
+ * Get orphaned agents (running but not tracked in session state).
  */
+export function getOrphanedAgents(): AgentProcess[] {
+  const sessions = getAllSessions();
+  const agents = getAllAgents();
+  const trackedSessionIds = new Set(sessions.map((s) => s.sessionId));
+  return agents.filter((a) => !trackedSessionIds.has(a.sessionId));
+}
+
+/**
+ * Kill all orphaned agents.
+ * Returns the count of agents killed.
+ */
+export async function cleanupOrphanedSessions(): Promise<number> {
+  const orphaned = getOrphanedAgents();
+  await Promise.allSettled(orphaned.map((a) => killAgent(a, 0)));
+  return orphaned.length;
+}
+
+/**
+ * Discover orphaned agents on startup.
+ * With the new agent process manager, agents don't persist across restarts,
+ * so this function now returns 0.
+ */
+export async function discoverOrphanedSessions(): Promise<number> {
+  // Agent processes don't survive Miranda restarts (unlike tmux sessions)
+  // This function is kept for API compatibility but does nothing meaningful
+  return 0;
+}
+
 async function handleCleanup(ctx: Context): Promise<void> {
-  const orphaned = await getOrphanedSessions();
+  const orphaned = getOrphanedAgents();
 
   if (orphaned.length === 0) {
     await ctx.reply("*Cleanup*\n\n_No orphaned sessions found_", {
@@ -622,8 +652,8 @@ async function handleCleanup(ctx: Context): Promise<void> {
 
   // Build message listing orphaned sessions
   const lines: string[] = ["*Cleanup*", "", `Found ${orphaned.length} orphaned session(s):`, ""];
-  for (const t of orphaned) {
-    lines.push(`  \`${t.name}\``);
+  for (const a of orphaned) {
+    lines.push(`  \`${a.sessionId}\` (pid: ${a.pid})`);
   }
 
   // Build confirmation keyboard
@@ -639,9 +669,9 @@ async function handleCleanup(ctx: Context): Promise<void> {
 
 async function handleKillall(ctx: Context): Promise<void> {
   const sessions = getAllSessions();
-  const tmuxSessions = await listTmuxSessions();
+  const agents = getAllAgents();
 
-  if (sessions.length === 0 && tmuxSessions.length === 0) {
+  if (sessions.length === 0 && agents.length === 0) {
     await ctx.reply("*Kill All*\n\n_No sessions to kill_", {
       parse_mode: "Markdown",
     });
@@ -662,13 +692,13 @@ async function handleKillall(ctx: Context): Promise<void> {
     lines.push("");
   }
 
-  // Find orphaned tmux sessions (in tmux but not tracked)
-  const trackedNames = new Set(sessions.map((s) => s.tmuxName));
-  const orphaned = tmuxSessions.filter((t) => !trackedNames.has(t.name));
+  // Find orphaned agents (running but not tracked)
+  const trackedSessionIds = new Set(sessions.map((s) => s.sessionId));
+  const orphaned = agents.filter((a) => !trackedSessionIds.has(a.sessionId));
   if (orphaned.length > 0) {
-    lines.push("*Orphaned tmux sessions:*");
-    for (const t of orphaned) {
-      lines.push(`  \`${t.name}\``);
+    lines.push("*Orphaned processes:*");
+    for (const a of orphaned) {
+      lines.push(`  \`${a.sessionId}\``);
     }
     lines.push("");
   }
@@ -693,28 +723,18 @@ async function handleKillall(ctx: Context): Promise<void> {
  */
 export async function executeKillall(): Promise<{ killed: number; errors: string[] }> {
   const sessions = getAllSessions();
-  const tmuxSessions = await listTmuxSessions();
+  const agents = getAllAgents();
   const errors: string[] = [];
 
-  // Collect all tmux session names to kill (both tracked and orphaned)
-  const tmuxNamesToKill = new Set<string>();
-  for (const s of sessions) {
-    tmuxNamesToKill.add(s.tmuxName);
-  }
-  for (const t of tmuxSessions) {
-    tmuxNamesToKill.add(t.name);
-  }
-
-  // Kill all tmux sessions
-  const namesToKill = Array.from(tmuxNamesToKill);
+  // Kill all agents
   const killResults = await Promise.allSettled(
-    namesToKill.map((name) => killSession(name))
+    agents.map((a) => killAgent(a, 0))
   );
 
   // Check for errors
   killResults.forEach((result, idx) => {
     if (result.status === "rejected") {
-      errors.push(`${namesToKill[idx]}: ${result.reason}`);
+      errors.push(`${agents[idx].sessionId}: ${result.reason}`);
     }
   });
 
@@ -723,7 +743,7 @@ export async function executeKillall(): Promise<{ killed: number; errors: string
     deleteSession(s.taskId);
   }
 
-  return { killed: tmuxNamesToKill.size, errors };
+  return { killed: agents.length, errors };
 }
 
 async function handleDrummer(ctx: Context): Promise<void> {
@@ -750,15 +770,13 @@ async function handleDrummer(ctx: Context): Promise<void> {
   }
 
   // Check if a drummer session is already running for THIS project
-  // Drummer tmux names follow pattern: <projectName>-drummer-<timestamp>
   const sessions = getAllSessions();
-  const drummerPrefix = `${projectName}-drummer-`;
   const existingDrummer = sessions.find(
-    (s) => s.skill === "drummer" && s.status === "running" && s.tmuxName.startsWith(drummerPrefix)
+    (s) => s.skill === "drummer" && s.status === "running" && s.sessionId.includes(projectName)
   );
   if (existingDrummer) {
     await ctx.reply(
-      `Drummer session already running for ${projectName}: \`${existingDrummer.tmuxName}\``,
+      `Drummer session already running for ${projectName}: \`${existingDrummer.sessionId}\``,
       { parse_mode: "Markdown" }
     );
     return;
@@ -769,26 +787,26 @@ async function handleDrummer(ctx: Context): Promise<void> {
   });
 
   try {
-    const tmuxName = await spawnSession("drummer", undefined, chatId, {
+    const sessionId = await spawnSession("drummer", undefined, chatId, {
       projectPath: project.path,
       projectName: project.name,
     });
 
-    // Use tmuxName as the session key since drummer has no task ID
+    // Use sessionId as the session key since drummer has no task ID
     const session: Session = {
-      taskId: tmuxName, // Use tmux name as identifier for drummer
-      tmuxName,
+      taskId: sessionId,
+      sessionId,
       skill: "drummer",
       status: "running",
       startedAt: new Date(),
       chatId,
     };
-    setSession(tmuxName, session);
+    setSession(sessionId, session);
 
-    const keyboard = new InlineKeyboard().text(`Stop ${tmuxName}`, `stop:${tmuxName}`);
+    const keyboard = new InlineKeyboard().text(`Stop ${sessionId}`, `stop:${sessionId}`);
     await ctx.reply(
       `Drummer running for \`${projectName}\`
-Session: \`${tmuxName}\`
+Session: \`${sessionId}\`
 
 Reviewing PRs with \`drummer-merge\` label...`,
       { parse_mode: "Markdown", reply_markup: keyboard }
@@ -824,13 +842,12 @@ async function handleOhMerge(ctx: Context): Promise<void> {
 
   // Check if an oh-merge session is already running for THIS project
   const sessions = getAllSessions();
-  const ohMergePrefix = `${projectName}-oh-merge-`;
   const existingOhMerge = sessions.find(
-    (s) => s.skill === "oh-merge" && s.status === "running" && s.tmuxName.startsWith(ohMergePrefix)
+    (s) => s.skill === "oh-merge" && s.status === "running" && s.sessionId.includes(projectName)
   );
   if (existingOhMerge) {
     await ctx.reply(
-      `oh-merge session already running for ${projectName}: \`${existingOhMerge.tmuxName}\``,
+      `oh-merge session already running for ${projectName}: \`${existingOhMerge.sessionId}\``,
       { parse_mode: "Markdown" }
     );
     return;
@@ -841,26 +858,25 @@ async function handleOhMerge(ctx: Context): Promise<void> {
   });
 
   try {
-    const tmuxName = await spawnSession("oh-merge", undefined, chatId, {
+    const sessionId = await spawnSession("oh-merge", undefined, chatId, {
       projectPath: project.path,
       projectName: project.name,
     });
 
-    // Use tmuxName as the session key since oh-merge has no task ID
     const session: Session = {
-      taskId: tmuxName,
-      tmuxName,
+      taskId: sessionId,
+      sessionId,
       skill: "oh-merge",
       status: "running",
       startedAt: new Date(),
       chatId,
     };
-    setSession(tmuxName, session);
+    setSession(sessionId, session);
 
-    const keyboard = new InlineKeyboard().text(`Stop ${tmuxName}`, `stop:${tmuxName}`);
+    const keyboard = new InlineKeyboard().text(`Stop ${sessionId}`, `stop:${sessionId}`);
     await ctx.reply(
       `oh-merge running for \`${projectName}\`
-Session: \`${tmuxName}\`
+Session: \`${sessionId}\`
 
 Reviewing PRs with \`oh-merge\` label...`,
       { parse_mode: "Markdown", reply_markup: keyboard }
@@ -921,11 +937,11 @@ async function handleNotes(ctx: Context): Promise<void> {
   await ctx.reply(`Starting notes for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
 
   try {
-    const tmuxName = await spawnSession("notes", prNumber, chatId, { projectPath, projectName });
+    const sessionId = await spawnSession("notes", prNumber, chatId, { projectPath, projectName });
 
     const session: Session = {
       taskId: sessionKey,
-      tmuxName,
+      sessionId,
       skill: "notes",
       status: "running",
       startedAt: new Date(),
@@ -936,7 +952,7 @@ async function handleNotes(ctx: Context): Promise<void> {
     const keyboard = new InlineKeyboard().text(`Stop ${sessionKey}`, `stop:${sessionKey}`);
     await ctx.reply(
       `Notes running for ${projectName} PR #${prNumber}
-Session: \`${tmuxName}\`
+Session: \`${sessionId}\`
 
 Addressing human feedback...`,
       { parse_mode: "Markdown", reply_markup: keyboard }
@@ -997,11 +1013,11 @@ async function handleOhNotes(ctx: Context): Promise<void> {
   await ctx.reply(`Starting oh-notes for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
 
   try {
-    const tmuxName = await spawnSession("oh-notes", prNumber, chatId, { projectPath, projectName });
+    const sessionId = await spawnSession("oh-notes", prNumber, chatId, { projectPath, projectName });
 
     const session: Session = {
       taskId: sessionKey,
-      tmuxName,
+      sessionId,
       skill: "oh-notes",
       status: "running",
       startedAt: new Date(),
@@ -1012,7 +1028,7 @@ async function handleOhNotes(ctx: Context): Promise<void> {
     const keyboard = new InlineKeyboard().text(`Stop ${sessionKey}`, `stop:${sessionKey}`);
     await ctx.reply(
       `oh-notes running for ${projectName} PR #${prNumber}
-Session: \`${tmuxName}\`
+Session: \`${sessionId}\`
 
 Addressing GitHub issue PR feedback...`,
       { parse_mode: "Markdown", reply_markup: keyboard }
@@ -1153,26 +1169,26 @@ Examples:
   await ctx.reply(`Starting oh-task for ${projectName} ${issueList}${baseInfo}...`, { parse_mode: "Markdown" });
 
   // Spawn sessions for all issues
-  const results: { issue: string; success: boolean; tmuxName?: string; error?: string }[] = [];
+  const results: { issue: string; success: boolean; sessionId?: string; error?: string }[] = [];
   for (const issue of issuesToStart) {
     try {
       const spawnOptions: SpawnOptions = { projectPath, projectName };
       if (baseBranch) {
         spawnOptions.baseBranch = baseBranch;
       }
-      const tmuxName = await spawnSession("oh-task", issue, chatId, spawnOptions);
+      const sessionId = await spawnSession("oh-task", issue, chatId, spawnOptions);
 
       const sessionKey = `oh-task-${projectName}-${issue}`;
       const session: Session = {
         taskId: sessionKey,
-        tmuxName,
+        sessionId,
         skill: "oh-task",
         status: "running",
         startedAt: new Date(),
         chatId,
       };
       setSession(sessionKey, session);
-      results.push({ issue, success: true, tmuxName });
+      results.push({ issue, success: true, sessionId });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       results.push({ issue, success: false, error: message });
@@ -1187,7 +1203,7 @@ Examples:
   if (successful.length > 0) {
     lines.push("*Started:*");
     for (const r of successful) {
-      lines.push(`  #${r.issue} → \`${r.tmuxName}\``);
+      lines.push(`  #${r.issue} → \`${r.sessionId}\``);
     }
   }
   if (failed.length > 0) {
@@ -1273,14 +1289,14 @@ Example:
   });
 
   try {
-    const tmuxName = await spawnSession("oh-plan", description, chatId, {
+    const sessionId = await spawnSession("oh-plan", description, chatId, {
       projectPath,
       projectName,
     });
 
     const session: Session = {
       taskId: sessionKey,
-      tmuxName,
+      sessionId,
       skill: "oh-plan",
       status: "running",
       startedAt: new Date(),
@@ -1291,7 +1307,7 @@ Example:
     const keyboard = new InlineKeyboard().text(`Stop ${sessionKey}`, `stop:${sessionKey}`);
     await ctx.reply(
       `oh-plan running for \`${projectName}\`
-Session: \`${tmuxName}\`
+Session: \`${sessionId}\`
 
 Investigating and planning...`,
       { parse_mode: "Markdown", reply_markup: keyboard }
@@ -1466,8 +1482,7 @@ async function handleRestart(ctx: Context): Promise<void> {
       lines.push(`  ${statusEmoji} \`${s.taskId}\``);
     }
     lines.push("");
-    lines.push("Sessions will continue running in tmux.");
-    lines.push("After restart, run /status to re-sync.");
+    lines.push("Active sessions will be terminated.");
     lines.push("");
     lines.push("_Restarting..._");
 
@@ -1669,7 +1684,7 @@ async function handleLogs(ctx: Context): Promise<void> {
     return;
   }
 
-  // TODO: Implement log viewing (Phase 4)
+  // TODO: Implement log viewing
   await ctx.reply(`Logs for \`${taskId}\`...\n\n_Not yet implemented_`, {
     parse_mode: "Markdown",
   });
@@ -1679,7 +1694,6 @@ async function handleSsh(ctx: Context): Promise<void> {
   await ctx.reply(
     `\`\`\`
 ssh hetzner
-tmux attach
 \`\`\``,
     { parse_mode: "Markdown" }
   );
@@ -1706,12 +1720,22 @@ async function handleFreeText(ctx: Context): Promise<void> {
     return;
   }
 
-  // Send the text to the tmux session
+  // Get the agent and send the UI response
+  const agent = getAgent(session.sessionId);
+  if (!agent) {
+    await ctx.reply(`Session \`${session.taskId}\` agent not found`, { parse_mode: "Markdown" });
+    return;
+  }
+
   try {
-    await sendKeys(session.tmuxName, text);
+    // Send the text as a UI response
+    if (session.pendingUIRequestId) {
+      sendUIResponse(agent, session.pendingUIRequestId, { value: text });
+    }
 
     // Clear awaiting state and update status
     session.awaitingFreeText = undefined;
+    session.pendingUIRequestId = undefined;
     session.status = "running";
     setSession(session.taskId, session);
 
