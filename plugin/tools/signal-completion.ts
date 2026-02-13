@@ -1,5 +1,5 @@
 /**
- * signal_completion - Custom oh-my-pi tool for structured completion signaling.
+ * signal_completion - Custom Claude Code tool for structured completion signaling.
  *
  * Skills call this tool as their FINAL action to report outcomes.
  * Miranda watches for `tool_execution_end` events where `toolName === "signal_completion"`
@@ -9,10 +9,10 @@
  * No side effects, works standalone (when run outside Miranda context).
  */
 
-import type { CustomToolFactory } from "@anthropic-ai/claude-code";
-
-const factory: CustomToolFactory = ({ Type }) => ({
+// No type import needed - the loader casts `module.default as CustomToolFactory`
+const factory = ({ typebox: { Type } }: { typebox: typeof import("@sinclair/typebox") }) => ({
   name: "signal_completion",
+  label: "Signal Completion",
 
   description: `Signal task completion to the orchestrator. Call this as your FINAL action when a task is done.
 
