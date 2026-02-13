@@ -25,9 +25,12 @@ export function getAllSessions(): Session[] {
   return Array.from(sessions.values());
 }
 
-export function findSessionByTmuxName(tmuxName: string): Session | undefined {
+/**
+ * Find a session by its session ID (process ID or legacy tmux name).
+ */
+export function findSessionBySessionId(sessionId: string): Session | undefined {
   for (const session of sessions.values()) {
-    if (session.tmuxName === tmuxName) {
+    if (session.sessionId === sessionId) {
       return session;
     }
   }

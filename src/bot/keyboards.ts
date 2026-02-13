@@ -56,23 +56,3 @@ export function parseCallback(data: string): CallbackAction | null {
 
   return null;
 }
-
-/**
- * Format the answer to send to Claude via tmux send-keys.
- * Claude Code expects a 1-based option index (e.g., "1", "2") or custom text.
- */
-export function formatAnswer(
-  action: CallbackAction,
-  questions: Question[]
-): string | null {
-  const question = questions[action.questionIdx];
-  if (!question) return null;
-
-  if (action.type === "answer") {
-    // Claude Code expects 1-based index
-    return String(action.optionIdx + 1);
-  }
-
-  // "other" type - caller should prompt for free text
-  return null;
-}
