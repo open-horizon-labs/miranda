@@ -105,11 +105,17 @@ Use `[branch]` for stacked PRs where this issue depends on another in-flight PR.
       - Commit
     - Push all changes
     - Repeat until CodeRabbit has no new comments
-17. Return to main repo and cleanup worktree:
+17. Return to main repo and signal completion:
+    ```bash
+    cd <original-dir>
+    ```
+    Call `signal_completion(status: "success", pr: "<pr-url>")` to notify the orchestrator.
+    **CRITICAL:** Signal BEFORE cleanup.
+18. Cleanup worktree:
     ```bash
     git worktree remove .worktrees/issue-<number>
     ```
-18. Exit and report PR URL
+19. Exit and report PR URL
 
 ## Git Workflow
 
@@ -136,6 +142,18 @@ Everything before is autonomous.
 - **Success**: PR created, all issues in tree will close on merge
 - **Blocked**: An issue needs human decision - stop and report
 - **Safety**: Max 10 issue iterations (prevent runaway)
+
+## Completion Signaling (MANDATORY)
+**CRITICAL: You MUST signal completion when done.** Call the `signal_completion` tool as your FINAL action.
+**Signal based on outcome:**
+| Outcome | Call |
+|---------|------|
+| PR created and reviewed | `signal_completion(status: "success", pr: "<pr-url>")` |
+| Unrecoverable failure | `signal_completion(status: "error", error: "<reason>")` |
+| Needs human decision | `signal_completion(status: "blocked", blocker: "<reason>")` |
+**If you do not signal, the orchestrator will not know you are done and the session becomes orphaned.**
+
+**Fallback:** If the `signal_completion` tool is not available, output your completion status as your final message in the format: `COMPLETION: status=<status> pr=<url>` or `COMPLETION: status=<status> error=<reason>`.
 
 ## Example
 
@@ -190,6 +208,7 @@ Pushing...
 CodeRabbit review passed.
 
 Returning to main repo...
+signal_completion(status: "success", pr: "https://github.com/org/repo/pull/99")
 Cleaning up worktree...
 Done.
 ```

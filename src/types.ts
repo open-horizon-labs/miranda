@@ -20,6 +20,8 @@ export interface Session {
   pendingUIRequestId?: string;
   /** Pending UI request method - needed to send correct response shape */
   pendingUIMethod?: UIRequestMethod;
+  /** True if agent already signaled completion via signal_completion tool */
+  signaled?: boolean;
 }
 
 export interface PendingQuestion {

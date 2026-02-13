@@ -79,6 +79,11 @@ export interface RpcToolEvent {
   toolName?: string;
   toolCallId?: string;
   data?: unknown;
+  /** Result from tool_execution_end - includes details from custom tools */
+  result?: {
+    content?: Array<{ type: string; text?: string }>;
+    details?: unknown;
+  };
 }
 
 /** Message streaming events */

@@ -194,6 +194,19 @@ setup_skills() {
     fi
 }
 
+# Set up custom tools
+setup_tools() {
+    log_info "Setting up custom tools..."
+    mkdir -p "$tools_dir"
+    local tool_src="${REPO_DIR}/plugin/tools/signal-completion.ts"
+    local tool_dest="${tools_dir}/signal-completion.ts"
+        cp "$tool_src" "$tool_dest"
+        log_success "Installed signal-completion custom tool"
+    else
+        log_warn "signal-completion.ts not found in repo, skipping"
+    fi
+}
+
 # Print summary
 print_summary() {
     echo ""
@@ -234,6 +247,16 @@ print_summary() {
         fi
     fi
 
+    # Custom tools
+    echo ""
+    echo "Custom tools:"
+    local tools_dir="${CLAUDE_DIR}/tools"
+    if [[ -f "${tools_dir}/signal-completion.ts" ]]; then
+        echo "  [x] signal-completion"
+    else
+        echo "  [ ] signal-completion (not installed)"
+    fi
+
     echo ""
     echo "Configuration:"
     echo "  Plugins: claude plugin list"
@@ -258,6 +281,7 @@ main() {
     install_cargo_tools
     install_plugins
     setup_skills
+    setup_tools
     print_summary
 }
 
