@@ -33,7 +33,7 @@ export function handleAgentEvent(agent: AgentProcess, event: RpcEvent): void {
   const sessionId = agent.sessionId;
 
   switch (event.type) {
-    case "extension_ui":
+    case "extension_ui_request":
       handleExtensionUI(sessionId, event);
       break;
 
@@ -114,30 +114,27 @@ function handleExtensionUI(sessionId: string, event: RpcExtensionUIRequest): voi
   }
 
   // Handle different UI methods
+  // Note: oh-my-pi sends fields at top level, not nested in params
   switch (event.method) {
     case "select": {
       // Select is the equivalent of AskUserQuestion
-      const params = event.params as SelectParams;
-      handleSelectRequest(session.taskId, session.chatId, event.id, params);
+      handleSelectRequest(session.taskId, session.chatId, event.id, event);
       break;
     }
 
     case "confirm": {
-      const params = event.params as ConfirmParams;
-      handleConfirmRequest(session.taskId, session.chatId, event.id, params);
+      handleConfirmRequest(session.taskId, session.chatId, event.id, event);
       break;
     }
 
     case "input": {
-      const params = event.params as InputParams;
-      handleInputRequest(session.taskId, session.chatId, event.id, params);
+      handleInputRequest(session.taskId, session.chatId, event.id, event);
       break;
     }
 
     case "notify": {
       // Notification - just show a message, no response needed
-      const params = event.params as NotifyParams;
-      handleNotifyRequest(session.chatId, params);
+      handleNotifyRequest(session.chatId, event);
       break;
     }
 
@@ -184,31 +181,8 @@ function handleAgentEnd(sessionId: string): void {
 // UI Method Handlers
 // ============================================================================
 
-interface SelectParams {
-  title?: string;
-  options: Array<{ label: string; value?: string; description?: string }>;
-  placeholder?: string;
-}
-
-interface ConfirmParams {
-  title?: string;
-  message: string;
-  confirmText?: string;
-  cancelText?: string;
-}
-
-interface InputParams {
-  title?: string;
-  message?: string;
-  placeholder?: string;
-  defaultValue?: string;
-}
-
-interface NotifyParams {
-  title?: string;
-  message: string;
-  type?: "info" | "warning" | "error";
-}
+// Note: oh-my-pi sends all fields at top level in RpcExtensionUIRequest
+// No separate param interfaces needed - we use the event directly
 
 /**
  * Handle a select (multi-choice) request.
@@ -218,19 +192,20 @@ function handleSelectRequest(
   taskId: string,
   chatId: number,
   requestId: string,
-  params: SelectParams
+  event: RpcExtensionUIRequest
 ): void {
   const session = getSession(taskId);
   if (!session) return;
 
   // Convert to Question format used by buildQuestionKeyboard
+  // oh-my-pi sends options as string[] at top level
   const questions: Question[] = [
     {
-      question: params.placeholder ?? "Select an option:",
-      header: params.title ?? "Input Required",
-      options: params.options.map((opt) => ({
-        label: opt.label,
-        description: opt.description ?? "",
+      question: event.placeholder ?? "Select an option:",
+      header: event.title ?? "Input Required",
+      options: (event.options ?? []).map((opt) => ({
+        label: opt,
+        description: "",
       })),
       multiSelect: false,
     },
@@ -274,7 +249,7 @@ function handleConfirmRequest(
   taskId: string,
   chatId: number,
   requestId: string,
-  params: ConfirmParams
+  event: RpcExtensionUIRequest
 ): void {
   const session = getSession(taskId);
   if (!session) return;
@@ -282,11 +257,11 @@ function handleConfirmRequest(
   // Convert to Question format with yes/no options
   const questions: Question[] = [
     {
-      question: params.message,
-      header: params.title ?? "Confirmation",
+      question: event.message ?? "Please confirm",
+      header: event.title ?? "Confirmation",
       options: [
-        { label: params.confirmText ?? "Yes", description: "Confirm" },
-        { label: params.cancelText ?? "No", description: "Cancel" },
+        { label: event.confirmText ?? "Yes", description: "Confirm" },
+        { label: event.cancelText ?? "No", description: "Cancel" },
       ],
       multiSelect: false,
     },
@@ -306,7 +281,7 @@ function handleConfirmRequest(
   const keyboard = buildQuestionKeyboard(taskId, questions);
 
   botInstance!.api
-    .sendMessage(chatId, `*${taskId}* needs confirmation:\n\n*${params.title ?? "Confirm"}*\n${params.message}`, {
+    .sendMessage(chatId, `*${taskId}* needs confirmation:\n\n*${event.title ?? "Confirm"}*\n${event.message ?? ""}`, {
       parse_mode: "Markdown",
       reply_markup: keyboard,
     })
@@ -326,7 +301,7 @@ function handleInputRequest(
   taskId: string,
   chatId: number,
   requestId: string,
-  params: InputParams
+  event: RpcExtensionUIRequest
 ): void {
   const session = getSession(taskId);
   if (!session) return;
@@ -341,9 +316,9 @@ function handleInputRequest(
   setSession(taskId, session);
 
   // Build message
-  const title = params.title ?? "Input Required";
-  const message = params.message ?? params.placeholder ?? "Enter your response:";
-  const defaultHint = params.defaultValue ? `\n\n_Default: ${params.defaultValue}_` : "";
+  const title = event.title ?? "Input Required";
+  const message = event.message ?? event.placeholder ?? "Enter your response:";
+  const defaultHint = event.defaultValue ? `\n\n_Default: ${event.defaultValue}_` : "";
 
   botInstance!.api
     .sendMessage(chatId, `*${taskId}* needs input:\n\n*${title}*\n${message}${defaultHint}`, {
@@ -360,13 +335,17 @@ function handleInputRequest(
 
 /**
  * Handle a notification (info/warning/error message).
+ * Note: oh-my-pi may not send a type field, so we default to info
  */
-function handleNotifyRequest(chatId: number, params: NotifyParams): void {
-  const emoji = params.type === "error" ? "❌" : params.type === "warning" ? "⚠️" : "ℹ️";
-  const title = params.title ?? (params.type === "error" ? "Error" : params.type === "warning" ? "Warning" : "Info");
+function handleNotifyRequest(chatId: number, event: RpcExtensionUIRequest): void {
+  // Infer type from title if not explicitly provided
+  const title = event.title ?? "Info";
+  const isError = title.toLowerCase().includes("error");
+  const isWarning = title.toLowerCase().includes("warning");
+  const emoji = isError ? "❌" : isWarning ? "⚠️" : "ℹ️";
 
   botInstance!.api
-    .sendMessage(chatId, `${emoji} *${title}*\n\n${params.message}`, {
+    .sendMessage(chatId, `${emoji} *${title}*\n\n${event.message ?? ""}`, {
       parse_mode: "Markdown",
     })
     .catch((err) => {

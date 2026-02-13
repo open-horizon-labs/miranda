@@ -51,10 +51,17 @@ export interface RpcResponse {
 
 /** Extension UI request from agent (requesting user interaction) */
 export interface RpcExtensionUIRequest {
-  type: "extension_ui";
+  type: "extension_ui_request";
   id: string;
   method: "select" | "confirm" | "input" | "editor" | "notify" | "setStatus" | "setWidget" | "setTitle" | "set_editor_text";
-  params: unknown;
+  // Fields are top-level, not nested in params (oh-my-pi wire format)
+  title?: string;
+  message?: string;
+  options?: string[];  // select options as string array
+  placeholder?: string;
+  confirmText?: string;
+  cancelText?: string;
+  defaultValue?: string;
 }
 
 /** Agent lifecycle events */
@@ -168,7 +175,8 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       }
       const baseArg = baseBranch ? ` ${baseBranch}` : "";
       return {
-        skillInvocation: `/mouse ${taskId}${baseArg}`,
+        // No slash prefix - oh-my-pi RPC mode expects bare skill names
+        skillInvocation: `mouse ${taskId}${baseArg}`,
       };
     }
     case "drummer": {
@@ -177,7 +185,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       }
       validateIdSafe(projectName, "projectName");
       return {
-        skillInvocation: "/drummer",
+        skillInvocation: "drummer",
       };
     }
     case "notes": {
@@ -190,7 +198,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       validateIdSafe(taskId, "prNumber");
       validateIdSafe(projectName, "projectName");
       return {
-        skillInvocation: `/notes ${taskId}`,
+        skillInvocation: `notes ${taskId}`,
       };
     }
     case "oh-task": {
@@ -207,7 +215,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       }
       const baseArg = baseBranch ? ` ${baseBranch}` : "";
       return {
-        skillInvocation: `/oh-task ${taskId}${baseArg}`,
+        skillInvocation: `oh-task ${taskId}${baseArg}`,
       };
     }
     case "oh-merge": {
@@ -216,7 +224,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       }
       validateIdSafe(projectName, "projectName");
       return {
-        skillInvocation: "/oh-merge",
+        skillInvocation: "oh-merge",
       };
     }
     case "oh-notes": {
@@ -229,7 +237,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       validateIdSafe(taskId, "prNumber");
       validateIdSafe(projectName, "projectName");
       return {
-        skillInvocation: `/oh-notes ${taskId}`,
+        skillInvocation: `oh-notes ${taskId}`,
       };
     }
     case "oh-plan": {
@@ -242,7 +250,7 @@ function getSkillConfig(skill: SkillType, options: SkillOptions): SkillConfig {
       validateIdSafe(projectName, "projectName");
       // taskId is the description - don't validate pattern (descriptions contain spaces)
       return {
-        skillInvocation: `/oh-plan ${taskId}`,
+        skillInvocation: `oh-plan ${taskId}`,
       };
     }
     default: {
