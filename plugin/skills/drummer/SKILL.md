@@ -119,20 +119,6 @@ The collective that processes in rhythm. Holistically review pending PRs, then s
       - Signal error: already-merged PRs stay merged, failed PR remains open
       - Next drummer run will see the failed PR as a new root (its parent is now in main)
 
-7. **Signal completion (MANDATORY)** - This is the LAST thing you do:
-   ```bash
-   # On success:
-   curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-     -H "Content-Type: application/json" \
-     -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}"
-
-   # On error:
-   curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-     -H "Content-Type: application/json" \
-     -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"<reason>\"}"
-   ```
-   **If you don't signal, Miranda won't know you're done and the session becomes orphaned.**
-
 ## Stacked PRs
 
 When PRs target other PR branches (not main), drummer detects the stack and processes it:
@@ -237,7 +223,6 @@ Merge complete.
   Merged: 1 PR (#42)
   Remaining: 1 PR (#44 - queued for next run)
 
-Signaling completion...
 Done.
 ```
 
@@ -280,6 +265,5 @@ Stack merged.
   Merged: 2 PRs (#42, #43)
   Remaining: 1 PR (#44 - queued for next run)
 
-Signaling completion...
 Done.
 ```

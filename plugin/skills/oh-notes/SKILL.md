@@ -156,29 +156,6 @@ When in doubt, address it. Better to over-fix than under-fix.
 - **Blocked**: Comment requires human decision - report and stop
 - **Safety**: Max 10 issue iterations (prevent runaway)
 
-## Completion Signaling (MANDATORY)
-
-**CRITICAL: You MUST signal completion when done.** This is the LAST thing you do.
-
-```bash
-# On success:
-curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-  -H "Content-Type: application/json" \
-  -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\", \"pr\": \"<PR-URL>\"}"
-
-# On blocked (needs human):
-curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-  -H "Content-Type: application/json" \
-  -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"blocked\", \"blocker\": \"<reason>\"}"
-
-# On error:
-curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-  -H "Content-Type: application/json" \
-  -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"<reason>\"}"
-```
-
-**If you don't signal, Miranda won't know you're done and the session becomes orphaned.**
-
 ## Example
 
 ```
@@ -228,7 +205,6 @@ To github.com:org/repo.git
    f1e2d3c..a1b2c3d  issue/123 -> issue/123
 
 Cleaning up worktree...
-Signaling blocked (comment 4 needs decision)...
 
 Done.
   Addressed: 3 comments
@@ -279,7 +255,6 @@ Committing all fixes...
 
 Pushing...
 Cleaning up worktree...
-Signaling success...
 
 Done.
   Addressed: 1 comment

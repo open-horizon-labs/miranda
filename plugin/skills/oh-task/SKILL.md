@@ -105,19 +105,11 @@ Use `[branch]` for stacked PRs where this issue depends on another in-flight PR.
       - Commit
     - Push all changes
     - Repeat until CodeRabbit has no new comments
-17. Return to main repo and signal completion (if `$MIRANDA_PORT` is set):
-    ```bash
-    cd <original-dir>
-    curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-      -H "Content-Type: application/json" \
-      -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\", \"pr\": \"<pr-url>\"}"
-    ```
-    **CRITICAL:** Signal BEFORE cleanup. If still in worktree when it's deleted, curl fails.
-18. Cleanup worktree:
+17. Return to main repo and cleanup worktree:
     ```bash
     git worktree remove .worktrees/issue-<number>
     ```
-19. Exit and report PR URL
+18. Exit and report PR URL
 
 ## Git Workflow
 
@@ -144,26 +136,6 @@ Everything before is autonomous.
 - **Success**: PR created, all issues in tree will close on merge
 - **Blocked**: An issue needs human decision - stop and report
 - **Safety**: Max 10 issue iterations (prevent runaway)
-
-## Completion Signaling (MANDATORY)
-
-**CRITICAL: You MUST signal completion when done.** If `$MIRANDA_PORT` is set, you are running under Miranda and MUST curl the completion endpoint. This is the LAST thing you do.
-
-```bash
-# Run this as your FINAL action:
-curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-  -H "Content-Type: application/json" \
-  -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\", \"pr\": \"<pr-url>\"}"
-```
-
-**Signal based on outcome:**
-| Outcome | Status | Payload |
-|---------|--------|---------|
-| PR created & reviewed | `success` | `"pr": "<url>"` |
-| Unrecoverable failure | `error` | `"error": "<reason>"` |
-| Needs human decision | `error` | `"error": "Blocked: <reason>"` |
-
-**If you don't signal, Miranda won't know you're done and the session becomes orphaned.**
 
 ## Example
 
@@ -218,7 +190,6 @@ Pushing...
 CodeRabbit review passed.
 
 Returning to main repo...
-Signaling completion to Miranda...
 Cleaning up worktree...
 Done.
 ```

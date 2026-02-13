@@ -166,13 +166,6 @@ When no session file exists (current behavior):
    )"
    ```
 
-5. **Signal completion** (if `$MIRANDA_PORT` is set):
-   ```bash
-   curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-     -H "Content-Type: application/json" \
-     -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}"
-   ```
-
 ## Issue Quality Guidelines
 
 Issues created by oh-plan should be:
@@ -353,7 +346,6 @@ Detect when tmux sessions stop responding and notify the user.
 - Use tmux has-session to check liveness
 - Consider: what if tmux server itself is down?
 
-Signaling completion...
 Done. Issue #67 ready for /oh-task.
 ```
 

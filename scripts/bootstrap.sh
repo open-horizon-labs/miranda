@@ -15,7 +15,6 @@
 # Installs:
 #   - Cargo tools: ba, sg, wm
 #   - Plugins via marketplace: miranda, superego, wm
-#   - Hooks: notify-miranda.sh for AskUserQuestion notifications
 
 set -euo pipefail
 
@@ -32,7 +31,6 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 CLAUDE_DIR="${HOME}/.claude"
-HOOKS_DIR="${CLAUDE_DIR}/hooks"
 SKILLS_DIR="${CLAUDE_DIR}/skills"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
@@ -196,61 +194,6 @@ setup_skills() {
     fi
 }
 
-# Set up hooks
-setup_hooks() {
-    log_info "Setting up hooks..."
-
-    mkdir -p "$HOOKS_DIR"
-
-    # Copy notify-miranda.sh from repo
-    local hook_src="${REPO_DIR}/scripts/notify-miranda.sh"
-    local hook_dest="${HOOKS_DIR}/notify-miranda.sh"
-
-    if [[ -f "$hook_src" ]]; then
-        cp "$hook_src" "$hook_dest"
-        chmod +x "$hook_dest"
-        log_success "Installed notify-miranda.sh hook"
-    else
-        log_warn "notify-miranda.sh not found in repo, skipping"
-    fi
-
-    # Configure hooks in settings.json
-    configure_hooks_settings
-}
-
-# Configure hooks in Claude settings.json
-configure_hooks_settings() {
-    local settings_file="${CLAUDE_DIR}/settings.json"
-
-    # Create settings if doesn't exist
-    if [[ ! -f "$settings_file" ]]; then
-        echo '{}' > "$settings_file"
-    fi
-
-    # Add hook configuration using $HOME (expanded at runtime)
-    local hook_path="${HOME}/.claude/hooks/notify-miranda.sh"
-
-    # Use jq to add the PreToolUse hook without overwriting existing hooks
-    local updated
-    updated=$(jq --arg hook_path "$hook_path" '
-        .hooks //= {} |
-        .hooks.PreToolUse //= [] |
-        if (.hooks.PreToolUse | map(select(.matcher == "AskUserQuestion")) | length) > 0 then
-            .
-        else
-            .hooks.PreToolUse += [{
-                "matcher": "AskUserQuestion",
-                "hooks": [{ "type": "command", "command": $hook_path }]
-            }]
-        end
-    ' "$settings_file")
-
-    # Atomic write to prevent corruption on interrupt
-    echo "$updated" > "$settings_file.tmp" && mv "$settings_file.tmp" "$settings_file"
-
-    log_success "Configured hooks in settings.json"
-}
-
 # Print summary
 print_summary() {
     echo ""
@@ -291,18 +234,9 @@ print_summary() {
         fi
     fi
 
-    # Hooks
-    echo ""
-    if [[ -f "${HOOKS_DIR}/notify-miranda.sh" ]]; then
-        echo "  [x] notify-miranda.sh hook"
-    else
-        echo "  [ ] Hooks (none)"
-    fi
-
     echo ""
     echo "Configuration:"
     echo "  Plugins: claude plugin list"
-    echo "  Hooks:   $HOOKS_DIR"
     echo "  Config:  ${CLAUDE_DIR}/settings.json"
     echo ""
     echo "Next steps:"
@@ -324,7 +258,6 @@ main() {
     install_cargo_tools
     install_plugins
     setup_skills
-    setup_hooks
     print_summary
 }
 

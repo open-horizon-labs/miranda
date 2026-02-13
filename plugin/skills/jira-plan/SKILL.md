@@ -200,13 +200,6 @@ When no session file exists:
    - To: B
    ```
 
-7. **Signal completion** (if `$MIRANDA_PORT` is set):
-   ```bash
-   curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-     -H "Content-Type: application/json" \
-     -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}"
-   ```
-
 ## Subtask Quality Guidelines
 
 Subtasks created by jira-plan should be:
@@ -390,7 +383,6 @@ h2. Notes
 
 Labels: jira-planned
 
-Signaling completion...
 Done. PROJ-107 ready for execution.
 ```
 

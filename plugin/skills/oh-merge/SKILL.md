@@ -111,20 +111,6 @@ Like drummer, but for GitHub issue PRs (from oh-task) instead of ba task PRs (fr
    **Note:** Unlike drummer, no `ba finish` step is needed. GitHub automatically closes
    linked issues when the PR merges (via "Closes #N" in the PR body).
 
-7. **Signal completion (MANDATORY)** - This is the LAST thing you do:
-   ```bash
-   # On success:
-   curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-     -H "Content-Type: application/json" \
-     -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"success\"}"
-
-   # On error:
-   curl -sS -X POST "http://localhost:${MIRANDA_PORT}/complete" \
-     -H "Content-Type: application/json" \
-     -d "{\"session\": \"$TMUX_SESSION\", \"status\": \"error\", \"error\": \"<reason>\"}"
-   ```
-   **If you don't signal, Miranda won't know you're done and the session becomes orphaned.**
-
 ## Stacked PRs
 
 When PRs target other PR branches (not main), oh-merge detects the stack and processes it:
@@ -223,7 +209,6 @@ Merge complete.
   Merged: 1 PR (#42)
   Remaining: 1 PR (#44 - queued for next run)
 
-Signaling completion...
 Done.
 ```
 
@@ -264,6 +249,5 @@ Stack merged.
   Merged: 2 PRs (#42, #43)
   Remaining: 1 PR (#44 - queued for next run)
 
-Signaling completion...
 Done.
 ```

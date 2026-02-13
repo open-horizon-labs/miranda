@@ -1,8 +1,7 @@
 import { Bot } from "grammy";
 import { config, validateConfig } from "./config.js";
-import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback, discoverOrphanedSessions, executeKillall, handleResetCallback, stopSession, killSession } from "./bot/commands.js";
-import { parseCallback, buildQuestionKeyboard } from "./bot/keyboards.js";
-import { createHookServer, type HookServer } from "./hooks/server.js";
+import { registerCommands, cleanupOrphanedSessions, handleTasksCallback, handleMouseCallback, discoverOrphanedSessions, executeKillall, handleResetCallback, stopSession } from "./bot/commands.js";
+import { parseCallback } from "./bot/keyboards.js";
 import {
   getAgent,
   sendUIResponse,
@@ -14,12 +13,9 @@ import {
   getSession,
   setSession,
   deleteSession,
-  findSessionBySessionId,
   getRestartChatId,
   clearRestartChatId,
 } from "./state/sessions.js";
-import type { HookNotification, CompletionNotification, AlertNotification } from "./types.js";
-import { escapeForCodeBlock, escapeMarkdown } from "./utils/telegram.js";
 
 // Validate configuration
 validateConfig();
@@ -30,12 +26,9 @@ const bot = new Bot(config.botToken);
 // Set bot instance for event handling (allows agent events to send Telegram messages)
 setBot(bot);
 
-// Hook server (created later, stored here for shutdown access)
-let hookServer: HookServer;
-
 /**
  * Graceful shutdown function.
- * Stops the bot, hook server, and all agent processes, then exits.
+ * Stops the bot and all agent processes, then exits.
  * systemd/PM2 will restart Miranda automatically.
  */
 export async function gracefulShutdown(): Promise<void> {
@@ -45,12 +38,6 @@ export async function gracefulShutdown(): Promise<void> {
     // Stop bot polling first (prevents new commands)
     await bot.stop();
     console.log("   Bot stopped");
-
-    // Stop hook server (prevents new notifications)
-    if (hookServer) {
-      await hookServer.stop();
-      console.log("   Hook server stopped");
-    }
 
     // Kill all agent processes
     const agents = getAllAgents();
@@ -287,198 +274,34 @@ bot.catch((err) => {
   console.error("Bot error:", err);
 });
 
-// Hook notification handler (legacy - for tmux sessions using Claude Code hooks)
-// NOTE: This handler won't match agent-based sessions since they use process IDs
-// as sessionId, not tmux session names. This is expected - the hook server is
-// transitional and will be removed entirely once agent sessions use RPC events
-// exclusively (tracked in #68).
-function handleNotification(notification: HookNotification): void {
-  const session = findSessionBySessionId(notification.session);
-  if (!session) {
-    console.warn(`Notification for unknown session: ${notification.session}`);
-    return;
-  }
-
-  // Update session state
-  session.status = "waiting_input";
-  session.pendingQuestion = {
-    messageId: 0, // Will be set after sending
-    questions: notification.input.questions,
-    receivedAt: new Date(),
-  };
-  setSession(session.taskId, session);
-
-  // Send notification to Telegram
-  const questions = notification.input.questions;
-  const questionText = questions
-    .map((q, i) => `*${q.header}*\n${q.question}`)
-    .join("\n\n");
-
-  const keyboard = buildQuestionKeyboard(session.taskId, questions);
-
-  bot.api
-    .sendMessage(session.chatId, `*${session.taskId}* needs input:\n\n${questionText}`, {
-      parse_mode: "Markdown",
-      reply_markup: keyboard,
-    })
-    .then((msg) => {
-      // Update with actual message ID
-      session.pendingQuestion!.messageId = msg.message_id;
-      setSession(session.taskId, session);
-    })
-    .catch((err) => {
-      console.error("Failed to send notification:", err);
-    });
-}
-
-// Completion handler - called when skill finishes (via signal_completion tool)
-// NOTE: Like handleNotification, this only works with tmux session names.
-// Agent-based sessions signal completion via agent_end RPC event instead.
-// This handler will be removed with #68.
-function handleCompletion(completion: CompletionNotification): void {
-  const session = findSessionBySessionId(completion.session);
-  if (!session) {
-    console.warn(`Completion for unknown session: ${completion.session}`);
-    return;
-  }
-
-  const taskId = session.taskId;
-  const chatId = session.chatId;
-  const sessionId = session.sessionId;
-
-  // Remove session from tracking immediately - the skill is done regardless of
-  // whether we successfully notify the user. Telegram delivery is best-effort.
-  deleteSession(taskId);
-
-  // Kill the agent process - the skill has signaled completion
-  killSession(sessionId).catch((err) => {
-    console.error(`Failed to kill agent session ${sessionId}:`, err);
-  });
-
-  // Send notification to Telegram
-  if (completion.status === "success") {
-    // Escape parentheses in URL to prevent breaking Markdown link syntax
-    const escapedPr = completion.pr?.replace(/\(/g, "%28").replace(/\)/g, "%29");
-    const prLink = escapedPr ? `\n\n[View PR](${escapedPr})` : "";
-    bot.api
-      .sendMessage(chatId, `*${taskId}* completed successfully${prLink}`, {
-        parse_mode: "Markdown",
-      })
-      .catch((err) => {
-        console.error("Failed to send completion notification:", err);
-      });
-  } else if (completion.status === "blocked") {
-    const blockerMsg = completion.blocker
-      ? `\n\n\`${escapeForCodeBlock(completion.blocker)}\``
-      : "";
-    bot.api
-      .sendMessage(chatId, `*${taskId}* blocked - needs human decision${blockerMsg}`, {
-        parse_mode: "Markdown",
-      })
-      .catch((err) => {
-        console.error("Failed to send blocked notification:", err);
-      });
-  } else {
-    const errorMsg = completion.error
-      ? `\n\n\`${escapeForCodeBlock(completion.error)}\``
-      : "";
-    bot.api
-      .sendMessage(chatId, `*${taskId}* failed${errorMsg}`, {
-        parse_mode: "Markdown",
-      })
-      .catch((err) => {
-        console.error("Failed to send error notification:", err);
-      });
-  }
-}
-
-// Alert handler - called when Shrike sends an alert
-function handleAlert(alert: AlertNotification): void {
-  // Format the alert message for Telegram
-  const lines: string[] = [];
-
-  // Header with type and source
-  const sourceInfo = alert.source ? ` (${escapeMarkdown(alert.source)})` : "";
-  lines.push(`*${escapeMarkdown(alert.type)}*${sourceInfo}`);
-
-  // Title
-  lines.push(escapeMarkdown(alert.title));
-
-  // Body if present
-  if (alert.body) {
-    lines.push("");
-    lines.push(escapeMarkdown(alert.body));
-  }
-
-  // Reason if present
-  if (alert.reason) {
-    lines.push("");
-    lines.push(`_${escapeMarkdown(alert.reason)}_`);
-  }
-
-  // URL if present
-  if (alert.url) {
-    lines.push("");
-    // Escape parentheses in URL to prevent breaking Markdown link syntax
-    const escapedUrl = alert.url.replace(/\(/g, "%28").replace(/\)/g, "%29");
-    lines.push(`[View](${escapedUrl})`);
-  }
-
-  // Metadata if present
-  if (alert.metadata && Object.keys(alert.metadata).length > 0) {
-    lines.push("");
-    for (const [key, value] of Object.entries(alert.metadata)) {
-      lines.push(`${escapeMarkdown(key)}: ${escapeMarkdown(String(value))}`);
-    }
-  }
-
-  const message = lines.join("\n");
-
-  // Send to all allowed users
-  for (const userId of config.allowedUserIds) {
-    bot.api
-      .sendMessage(userId, message, { parse_mode: "Markdown" })
-      .catch((err) => {
-        console.error(`Failed to send alert to user ${userId}:`, err);
-      });
-  }
-}
-
-// Start hook server
-hookServer = createHookServer(config.hookPort, handleNotification, handleCompletion, handleAlert);
-
-// Start bot and hook server
+// Start bot
 console.log("Miranda starting...");
 console.log(`   Allowed users: ${config.allowedUserIds.join(", ") || "(none)"}`);
-console.log(`   Hook port: ${config.hookPort}`);
 
-Promise.all([
-  hookServer.start(),
-  bot.start({
-    onStart: async (info) => {
-      console.log(`   Bot: @${info.username}`);
+bot.start({
+  onStart: async (info) => {
+    console.log(`   Bot: @${info.username}`);
 
-      // Discover orphaned sessions (no-op for agent-based sessions)
-      const orphanCount = await discoverOrphanedSessions();
-      if (orphanCount > 0) {
-        console.log(`   Discovered ${orphanCount} orphaned session(s)`);
-      }
+    // Discover orphaned sessions (no-op for agent-based sessions)
+    const orphanCount = await discoverOrphanedSessions();
+    if (orphanCount > 0) {
+      console.log(`   Discovered ${orphanCount} orphaned session(s)`);
+    }
 
-      // Send "back online" message if we have a restart chat ID
-      const restartChatId = getRestartChatId();
-      if (restartChatId) {
-        clearRestartChatId();
-        bot.api.sendMessage(restartChatId, `*Miranda is back online*`, {
-          parse_mode: "Markdown",
-        }).catch((err) => {
-          console.error("Failed to send back online message:", err);
-        });
-      }
+    // Send "back online" message if we have a restart chat ID
+    const restartChatId = getRestartChatId();
+    if (restartChatId) {
+      clearRestartChatId();
+      bot.api.sendMessage(restartChatId, `*Miranda is back online*`, {
+        parse_mode: "Markdown",
+      }).catch((err) => {
+        console.error("Failed to send back online message:", err);
+      });
+    }
 
-      console.log("Miranda is ready");
-    },
-  }),
-]).catch((err) => {
+    console.log("Miranda is ready");
+  },
+}).catch((err) => {
   console.error("Failed to start:", err);
   process.exit(1);
 });

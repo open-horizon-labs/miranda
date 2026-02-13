@@ -28,7 +28,6 @@ export const config = {
     .split(",")
     .map((id) => parseInt(id.trim(), 10))
     .filter((id) => !isNaN(id)),
-  hookPort: parseInt(process.env.MIRANDA_PORT ?? "3847", 10),
   defaultProject: process.env.MIRANDA_DEFAULT_PROJECT ?? "",
   projectsDir: expandTilde(process.env.PROJECTS_DIR ?? "~/projects"),
   mirandaHome: getMirandaHome(),
@@ -44,10 +43,6 @@ export function validateConfig(): void {
   }
   if (!config.ompCliPath) {
     console.error("OMP_CLI_PATH environment variable is required (path to oh-my-pi CLI)");
-    process.exit(1);
-  }
-  if (isNaN(config.hookPort)) {
-    console.error("MIRANDA_PORT must be a valid number");
     process.exit(1);
   }
   if (config.allowedUserIds.length === 0) {

@@ -313,8 +313,6 @@ export function spawnAgent(options: SpawnAgentOptions): AgentProcess {
       ...process.env,
       // Ensure cargo-installed tools are on PATH
       PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
-      // Pass Miranda port for completion signaling (though in RPC mode this may not be needed)
-      MIRANDA_PORT: String(config.hookPort),
     },
   });
 

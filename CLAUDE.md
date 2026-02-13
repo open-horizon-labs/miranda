@@ -16,17 +16,22 @@ Telegram bot for remote Claude orchestration. The ractor who gives voice to the 
 
 1. **Remote orchestration** - Start tasks, respond to questions, merge PRs from your phone
 2. **Project discovery** - List projects and GitHub issues on the server
-3. **Session management** - Spawn, monitor, and control Claude tmux sessions
-4. **Notifications** - Push alerts when Claude needs input (via Telegram)
+3. **Session management** - Spawn, monitor, and control oh-my-pi agent processes
+4. **Notifications** - Push alerts when Claude needs input (via Telegram, using RPC events)
 5. **Bootstrap** - Set up Claude Code on new machines (skills, hooks, plugins)
 
 ## Architecture
 
 ```
-Phone <-> Telegram <-> Miranda <-> tmux sessions (Claude /oh-task)
-                          ^
-                    PreToolUse hook (notify-miranda.sh)
+Phone <-> Telegram <-> Miranda <-> oh-my-pi agent processes (RPC mode)
+                                       |
+                                   JSON-RPC over stdin/stdout
 ```
+
+Miranda spawns oh-my-pi in RPC mode and communicates via JSON lines:
+- Agent questions arrive as `extension_ui_request` events on stdout
+- User responses are sent as `extension_ui_response` commands on stdin
+- Completion is signaled via `agent_end` events or process exit
 
 ## Development
 
@@ -50,9 +55,9 @@ pnpm start
 # Required
 TELEGRAM_BOT_TOKEN=xxx      # From @BotFather
 ALLOWED_USER_IDS=123,456    # Telegram user IDs (comma-separated)
+OMP_CLI_PATH=/path/to/oh-my-pi/cli.js  # Path to oh-my-pi CLI
 
 # Optional
-MIRANDA_PORT=3847           # HTTP port for hook notifications (default: 3847)
 SQLITE_PATH=./miranda.db    # SQLite database path
 PROJECTS_DIR=~/projects     # Directory to scan for projects (default: ~/projects)
 MIRANDA_HOME=~/miranda      # Override Miranda project root (default: derived from module location)
@@ -65,13 +70,12 @@ src/
 ├── index.ts           # Entry point, bot setup
 ├── bot/
 │   ├── commands.ts    # /ohtask, /status, /ohmerge, etc.
-│   └── callbacks.ts   # Inline keyboard handlers
-├── tmux/
-│   └── sessions.ts    # tmux session management
-├── hooks/
-│   └── server.ts      # HTTP server for hook notifications
+│   └── keyboards.ts   # Inline keyboard builders and parsers
+├── agent/
+│   ├── process.ts     # oh-my-pi RPC process management
+│   └── events.ts      # RPC event handlers
 ├── state/
-│   └── db.ts          # SQLite state management
+│   └── sessions.ts    # Session state management
 └── types.ts           # Shared types
 ```
 
@@ -144,22 +148,6 @@ Clones a GitHub repository and initializes development tools in one step.
 - Reports partial success if clone works but init fails
 - 10-minute clone timeout, 30-second per-tool init timeout
 
-## Hook Integration
-
-Claude Code on the server has a PreToolUse hook that POSTs to Miranda when `AskUserQuestion` is called:
-
-```bash
-# ~/.claude/hooks/notify-miranda.sh
-#!/bin/bash
-curl -X POST http://localhost:3847/notify \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"session\": \"$TMUX_SESSION\",
-    \"tool\": \"$CLAUDE_TOOL_NAME\",
-    \"input\": $CLAUDE_TOOL_INPUT
-  }"
-```
-
 ## Bootstrap Script
 
 `scripts/bootstrap.sh` sets up Claude Code on a new machine after auth:
@@ -173,7 +161,6 @@ curl -X POST http://localhost:3847/notify \
 | Component | Source | Purpose |
 |-----------|--------|---------|
 | **Skills** | Copy from local or git repo | oh-plan, oh-task, oh-merge, oh-notes, dive-prep, playbook |
-| **Hooks** | Miranda repo | notify-miranda.sh for notifications |
 | **sg** | cargo install | Superego metacognitive advisor |
 | **wm** | cargo install | Working memory |
 | **MCP servers** | claude mcp add | oh-mcp, context7, etc. |
@@ -203,9 +190,7 @@ ssh hetzner
 │   ├── oh-merge/SKILL.md
 │   ├── oh-notes/SKILL.md
 │   └── ...
-├── hooks/
-│   └── notify-miranda.sh
-└── settings.json (with hooks configured)
+└── settings.json
 
 # Also installed:
 sg --version    # Superego
