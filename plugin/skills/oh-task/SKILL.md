@@ -105,17 +105,28 @@ Use `[branch]` for stacked PRs where this issue depends on another in-flight PR.
       - Commit
     - Push all changes
     - Repeat until CodeRabbit has no new comments
-17. Return to main repo and signal completion:
+17. Verify CI is green:
+    ```bash
+    gh pr checks <pr-number> --watch --fail-on-error
+    ```
+    If CI fails:
+    - Read the failing check logs
+    - Attempt to fix the issue
+    - Stage changes, run code checks, run `sg review`
+    - Commit and push
+    - Wait for CI again: `gh pr checks <pr-number> --watch --fail-on-error`
+    - Max 3 CI fix attempts. If still failing, signal `status: "error"` with the failure reason.
+18. Return to main repo and signal completion:
     ```bash
     cd <original-dir>
     ```
     Call `signal_completion(status: "success", pr: "<pr-url>")` to notify the orchestrator.
     **CRITICAL:** Signal BEFORE cleanup.
-18. Cleanup worktree:
+19. Cleanup worktree:
     ```bash
     git worktree remove .worktrees/issue-<number>
     ```
-19. Exit and report PR URL
+20. Exit and report PR URL
 
 ## Git Workflow
 
@@ -139,7 +150,7 @@ Everything before is autonomous.
 
 ## Exit Conditions
 
-- **Success**: PR created, all issues in tree will close on merge
+- **Success**: PR created, CI green, all issues in tree will close on merge
 - **Blocked**: An issue needs human decision - stop and report
 - **Safety**: Max 10 issue iterations (prevent runaway)
 
@@ -148,7 +159,7 @@ Everything before is autonomous.
 **Signal based on outcome:**
 | Outcome | Call |
 |---------|------|
-| PR created and reviewed | `signal_completion(status: "success", pr: "<pr-url>")` |
+| PR created, reviewed, CI green | `signal_completion(status: "success", pr: "<pr-url>")` |
 | Unrecoverable failure | `signal_completion(status: "error", error: "<reason>")` |
 | Needs human decision | `signal_completion(status: "blocked", blocker: "<reason>")` |
 **If you do not signal, the orchestrator will not know you are done and the session becomes orphaned.**
@@ -206,7 +217,8 @@ CodeRabbit found 2 issues:
 [commit] fix: add nil check per CodeRabbit
 Pushing...
 CodeRabbit review passed.
-
+Waiting for CI checks...
+CI passed (3/3 checks green).
 Returning to main repo...
 signal_completion(status: "success", pr: "https://github.com/org/repo/pull/99")
 Cleaning up worktree...
