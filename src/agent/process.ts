@@ -293,8 +293,8 @@ export function spawnAgent(options: SpawnAgentOptions): AgentProcess {
   }
 
   // Spawn the agent process
-  // Uses bun to run the oh-my-pi CLI in RPC mode
-  const proc = spawn("bun", [cliPath, "--mode", "rpc", "--cwd", cwd], {
+  // Runs the oh-my-pi CLI directly in RPC mode
+  const proc = spawn(cliPath, ["--mode", "rpc", "--cwd", cwd], {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
     env: {
