@@ -9,6 +9,7 @@ import {
 import type {
   RpcEvent,
   RpcExtensionUIRequest,
+  RpcToolEvent,
   AgentProcess,
 } from "./process.js";
 import type { Question } from "../types.js";
@@ -45,6 +46,10 @@ export function handleAgentEvent(agent: AgentProcess, event: RpcEvent): void {
       console.error(`[agent:${sessionId}] Extension error:`, event.error);
       break;
 
+    case "tool_execution_end":
+      handleToolExecutionEnd(sessionId, event);
+      break;
+
     // Log other events for debugging
     case "response":
     case "agent_start":
@@ -55,7 +60,6 @@ export function handleAgentEvent(agent: AgentProcess, event: RpcEvent): void {
     case "message_update":
     case "tool_execution_start":
     case "tool_execution_update":
-    case "tool_execution_end":
       // Verbose event logging (could be gated by a debug flag)
       // console.debug(`[agent:${sessionId}] ${event.type}`);
       break;
@@ -162,8 +166,9 @@ function handleAgentEnd(sessionId: string): void {
     return;
   }
 
-  // The agent completed - send success notification
-  if (botInstance) {
+  // Only send generic completion notification if we haven't already signaled.
+  // If signal_completion was called, we already sent a rich notification.
+  if (!session.signaled && botInstance) {
     botInstance.api
       .sendMessage(session.chatId, `*${session.taskId}* completed`, {
         parse_mode: "Markdown",
@@ -354,4 +359,81 @@ function handleNotifyRequest(chatId: number, event: RpcExtensionUIRequest): void
     .catch((err) => {
       console.error("Failed to send notify message:", err);
     });
+}
+
+// ============================================================================
+// Tool Event Handlers
+// ============================================================================
+
+/** Structured completion data from signal_completion tool */
+interface SignalCompletionParams {
+  status: "success" | "error" | "blocked";
+  pr?: string;
+  error?: string;
+  blocker?: string;
+}
+
+/**
+ * Handle tool_execution_end events.
+ * Specifically watches for signal_completion tool calls to extract structured outcomes.
+ */
+function handleToolExecutionEnd(sessionId: string, event: RpcToolEvent): void {
+  // Only handle signal_completion tool
+  if (event.toolName !== "signal_completion") {
+    return;
+  }
+
+  const session = findSessionBySessionId(sessionId);
+  if (!session) {
+    console.warn(`[agent:${sessionId}] signal_completion for unknown session`);
+    return;
+  }
+
+  if (!botInstance) {
+    console.error(`[agent:${sessionId}] Bot not initialized, cannot send notification`);
+    return;
+  }
+
+  // Extract structured data from tool result
+  // The signal_completion tool returns params in result.details
+  const details = event.result?.details as SignalCompletionParams | undefined;
+  if (!details || !details.status) {
+    console.warn(`[agent:${sessionId}] signal_completion missing details:`, event.result);
+    return;
+  }
+
+  const { status, pr, error, blocker } = details;
+
+  // Build notification message based on status
+  let message: string;
+  switch (status) {
+    case "success":
+      message = pr
+        ? `*${session.taskId}* completed\n\n[View PR](${pr})`
+        : `*${session.taskId}* completed`;
+      break;
+    case "error":
+      message = `*${session.taskId}* failed\n\n${error ?? "Unknown error"}`;
+      break;
+    case "blocked":
+      message = `*${session.taskId}* blocked\n\n${blocker ?? "Needs human decision"}`;
+      break;
+    default:
+      message = `*${session.taskId}* signaled: ${status}`;
+  }
+
+  // Mark session as signaled to prevent duplicate notification from agent_end
+  session.signaled = true;
+  setSession(session.taskId, session);
+
+  // Send notification
+  botInstance.api
+    .sendMessage(session.chatId, message, { parse_mode: "Markdown" })
+    .catch((err) => {
+      console.error("Failed to send completion notification:", err);
+    });
+
+  // Note: We don't delete the session here - the agent_end event will handle cleanup.
+  // This allows the agent to continue (e.g., cleanup worktrees) after signaling.
+  console.log(`[agent:${sessionId}] signal_completion: status=${status}${pr ? ` pr=${pr}` : ""}${error ? ` error=${error}` : ""}${blocker ? ` blocker=${blocker}` : ""}`);
 }
