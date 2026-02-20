@@ -308,17 +308,11 @@ html, body {
   gap: 8px;
 }
 
-a.issue-number {
+.issue-number {
   font-size: 13px;
   font-weight: 700;
   color: var(--tg-theme-link-color);
   flex-shrink: 0;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-a.issue-number:active {
-  opacity: 0.7;
 }
 
 .issue-title {
@@ -326,16 +320,15 @@ a.issue-number:active {
   font-weight: 600;
   flex: 1;
   min-width: 0;
-  text-decoration: none;
 }
 
-a.issue-title {
+.clickable {
+  cursor: pointer;
   color: var(--tg-theme-link-color);
 }
 
-a.issue-title:hover,
-a.issue-number:hover {
-  text-decoration: underline;
+.clickable:active {
+  opacity: 0.7;
 }
 
 .issue-labels {
@@ -362,10 +355,8 @@ a.issue-number:hover {
   background: rgba(255, 255, 255, 0.04);
 }
 
-a.pr-status {
+.pr-status {
   font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
 }
 
 a.pr-status:active {
@@ -593,13 +584,30 @@ a.pr-status:active {
 }
 
 .admin-status .status-info {
-  color: var(--tg-theme-hint-color);
+  color: var(--tg-theme-text-color);
 }
 
 .btn.updating,
 .btn.restarting {
-  opacity: 0.6;
+  opacity: 0.8;
   cursor: wait;
+  position: relative;
+  color: transparent;
+}
+
+.btn.updating::after,
+.btn.restarting::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin: -8px 0 0 -8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
 }
 
 /* --- Scrollbar (webkit) --- */

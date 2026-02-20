@@ -260,21 +260,21 @@
     // Header row: number + title
     var header = document.createElement("div");
     header.className = "issue-header";
-    var numSpan = document.createElement("a");
-    numSpan.className = "issue-number";
+    var numSpan = document.createElement("span");
+    numSpan.className = "issue-number clickable";
     numSpan.textContent = "#" + issue.number;
     if (repoUrl) {
-      numSpan.href = repoUrl + "/issues/" + issue.number;
-      numSpan.target = "_blank";
-      numSpan.rel = "noopener";
+      numSpan.addEventListener("click", (function (url) {
+        return function () { openLink(url); };
+      })(repoUrl + "/issues/" + issue.number));
     }
-    var titleSpan = document.createElement("a");
-    titleSpan.className = "issue-title";
+    var titleSpan = document.createElement("span");
+    titleSpan.className = "issue-title clickable";
     titleSpan.textContent = issue.title;
     if (repoUrl) {
-      titleSpan.href = repoUrl + "/issues/" + issue.number;
-      titleSpan.target = "_blank";
-      titleSpan.rel = "noopener";
+      titleSpan.addEventListener("click", (function (url) {
+        return function () { openLink(url); };
+      })(repoUrl + "/issues/" + issue.number));
     }
     header.appendChild(numSpan);
     header.appendChild(titleSpan);
@@ -297,12 +297,12 @@
     if (pr) {
       var prDiv = document.createElement("div");
       prDiv.className = "issue-pr";
-      var prStatus = document.createElement("a");
-      prStatus.className = "pr-status";
+      var prStatus = document.createElement("span");
+      prStatus.className = "pr-status clickable";
       if (pr.url) {
-        prStatus.href = pr.url;
-        prStatus.target = "_blank";
-        prStatus.rel = "noopener";
+        prStatus.addEventListener("click", (function (url) {
+          return function () { openLink(url); };
+        })(pr.url));
       }
       if (pr.mergeable === true) {
         prStatus.classList.add("ready");
