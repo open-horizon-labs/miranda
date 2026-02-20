@@ -38,6 +38,17 @@ export const config = {
   port: parseInt(process.env.MIRANDA_PORT ?? "3847", 10),
   /** HTTPS URL for Telegram Mini App (e.g. https://myhost.ts.net:3847/). If set, bot sets menu button. */
   webappUrl: process.env.MIRANDA_WEBAPP_URL ?? "",
+  schedulerPollInterval: parseInt(process.env.SCHEDULER_POLL_INTERVAL ?? "60000", 10) || 60000,
+  schedulerMaxConcurrent: parseInt(process.env.SCHEDULER_MAX_CONCURRENT ?? "3", 10) || 3,
+  schedulerChatId: (() => {
+    const explicit = process.env.SCHEDULER_CHAT_ID;
+    if (explicit) return parseInt(explicit, 10) || 0;
+    const allowed = (process.env.ALLOWED_USER_IDS ?? "")
+      .split(",")
+      .map((id) => parseInt(id.trim(), 10))
+      .filter((id) => !isNaN(id));
+    return allowed[0] ?? 0;
+  })(),
 } as const;
 
 export function validateConfig(): void {

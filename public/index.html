@@ -58,6 +58,25 @@
   </div>
 </section>
 
+<section class="section" id="scheduler-section" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Scheduler</span>
+    <span class="section-badge scheduler-badge" id="scheduler-badge" style="display:none">off</span>
+  </div>
+  <div class="section-body">
+    <div class="scheduler-card">
+      <div class="scheduler-controls">
+        <label class="toggle-label">
+          <input type="checkbox" id="scheduler-toggle">
+          <span class="toggle-text">Auto-start issues when deps resolve</span>
+        </label>
+        <button class="btn btn-primary btn-sm" id="scheduler-trigger-btn">Execute Now</button>
+      </div>
+      <div class="scheduler-status" id="scheduler-status"></div>
+    </div>
+  </div>
+</section>
+
 <section class="section" id="admin-section">
   <div class="section-header">
     <span class="section-title">Admin</span>

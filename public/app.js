@@ -49,6 +49,9 @@
   var logStreams = {};
   var MAX_LOG_LINES = 200;
 
+  // Scheduler state
+  var schedulerStatus = null; // { running, pollIntervalMs, maxConcurrentSessions, projects }
+
   // ---------------------------------------------------------------------------
   // DOM refs
   // ---------------------------------------------------------------------------
@@ -79,6 +82,11 @@
   var $addProjectInput = document.getElementById("add-project-input");
   var $addProjectCancel = document.getElementById("add-project-cancel");
   var $addProjectSubmit = document.getElementById("add-project-submit");
+  var $schedulerSection = document.getElementById("scheduler-section");
+  var $schedulerToggle = document.getElementById("scheduler-toggle");
+  var $schedulerTriggerBtn = document.getElementById("scheduler-trigger-btn");
+  var $schedulerStatus = document.getElementById("scheduler-status");
+  var $schedulerBadge = document.getElementById("scheduler-badge");
 
   var adminBusy = false; // prevents concurrent admin operations
 
@@ -791,6 +799,7 @@
       enrichmentData = {};
       renderIssues();
       renderPRs();
+      renderScheduler();
       return Promise.resolve();
     }
 
@@ -865,8 +874,96 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Scheduler
+  // ---------------------------------------------------------------------------
+
+  function loadSchedulerStatus() {
+    return api("GET", "/api/scheduler/status").then(function (data) {
+      schedulerStatus = data;
+      renderScheduler();
+    }).catch(function () {
+      // Scheduler endpoint may not exist on older versions
+      schedulerStatus = null;
+      renderScheduler();
+    });
+  }
+
+  function renderScheduler() {
+    if (!selectedProject) {
+      $schedulerSection.style.display = "none";
+      return;
+    }
+
+    $schedulerSection.style.display = "";
+
+    var projState = schedulerStatus && schedulerStatus.projects
+      ? schedulerStatus.projects[selectedProject]
+      : null;
+    var enabled = projState ? projState.enabled : false;
+
+    $schedulerToggle.checked = enabled;
+    $schedulerBadge.textContent = enabled ? "on" : "off";
+    $schedulerBadge.className = "section-badge scheduler-badge " + (enabled ? "on" : "off");
+    $schedulerBadge.style.display = "";
+
+    if (projState && projState.lastCheckAt) {
+      var ago = Math.round((Date.now() - projState.lastCheckAt) / 1000);
+      var agoStr = ago < 60 ? ago + "s ago" : Math.round(ago / 60) + "m ago";
+      $schedulerStatus.textContent = "Last check: " + agoStr;
+    } else {
+      $schedulerStatus.textContent = enabled ? "Waiting for first poll\u2026" : "";
+    }
+  }
+
+  $schedulerToggle.addEventListener("change", function () {
+    if (!selectedProject) return;
+    var action = $schedulerToggle.checked ? "enable" : "disable";
+    api("POST", "/api/scheduler/" + encodeURIComponent(selectedProject) + "/" + action)
+      .then(function () {
+        showToast("Scheduler " + ($schedulerToggle.checked ? "enabled" : "disabled"), "success");
+        return loadSchedulerStatus();
+      })
+      .catch(function (err) {
+        $schedulerToggle.checked = !$schedulerToggle.checked;
+        showToast(err.message, "error");
+      });
+  });
+
+  $schedulerTriggerBtn.addEventListener("click", function () {
+    if (!selectedProject) return;
+    $schedulerTriggerBtn.disabled = true;
+    $schedulerTriggerBtn.textContent = "Running\u2026";
+    api("POST", "/api/scheduler/" + encodeURIComponent(selectedProject) + "/trigger")
+      .then(function (data) {
+        var parts = [];
+        if (data.started && data.started.length > 0) {
+          parts.push("Started: " + data.started.map(function (n) { return "#" + n; }).join(", "));
+        }
+        if (data.alreadyRunning && data.alreadyRunning.length > 0) {
+          parts.push("Already running: " + data.alreadyRunning.map(function (n) { return "#" + n; }).join(", "));
+        }
+        if (data.blocked && data.blocked.length > 0) {
+          parts.push("Blocked (max concurrent): " + data.blocked.map(function (n) { return "#" + n; }).join(", "));
+        }
+        if (data.cycles && data.cycles.length > 0) {
+          parts.push("Circular deps detected!");
+        }
+        var msg = parts.length > 0 ? parts.join(". ") : "No unblocked issues found";
+        showToast(msg, data.started && data.started.length > 0 ? "success" : "info");
+        return Promise.all([loadSessions(), loadSchedulerStatus()]);
+      })
+      .catch(function (err) {
+        showToast(err.message, "error");
+      })
+      .finally(function () {
+        $schedulerTriggerBtn.disabled = false;
+        $schedulerTriggerBtn.textContent = "Execute Now";
+      });
+  });
+
   function refreshAll() {
-    return Promise.all([loadSessions(), selectedProject ? loadProjectData() : Promise.resolve()]).catch(function (err) {
+    return Promise.all([loadSessions(), loadSchedulerStatus(), selectedProject ? loadProjectData() : Promise.resolve()]).catch(function (err) {
       // Suppress refresh errors (network blips, etc.)
       console.warn("Refresh failed:", err.message);
     });
@@ -930,6 +1027,7 @@
     enrichmentCacheTime = 0;
     renderIssues();
     renderPRs();
+    renderScheduler();
     if (selectedProject) {
       loadProjectData().catch(function (err) {
         showToast(err.message, "error");
@@ -1305,6 +1403,10 @@
 
     loadSessions().catch(function (err) {
       console.warn("Failed to load sessions:", err.message);
+    });
+
+    loadSchedulerStatus().catch(function (err) {
+      console.warn("Failed to load scheduler status:", err.message);
     });
 
     startAutoRefresh();
