@@ -202,7 +202,7 @@ html, body {
 
 .section-header::before {
   content: "\25BE";
-  font-size: 16px;
+  font-size: 32px;
   margin-right: 6px;
   color: var(--tg-theme-hint-color);
   transition: transform 0.2s;
