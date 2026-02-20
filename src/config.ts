@@ -34,6 +34,7 @@ export const config = {
   // Path to oh-my-pi CLI (packages/coding-agent/dist/cli.js)
   // Required for agent process management
   ompCliPath: process.env.OMP_CLI_PATH ?? "",
+  port: parseInt(process.env.MIRANDA_PORT ?? "3847", 10),
 } as const;
 
 export function validateConfig(): void {
@@ -47,5 +48,9 @@ export function validateConfig(): void {
   }
   if (config.allowedUserIds.length === 0) {
     console.warn("Warning: ALLOWED_USER_IDS not set, bot will reject all users");
+  }
+  if (isNaN(config.port) || config.port < 1 || config.port > 65535) {
+    console.error(`Invalid MIRANDA_PORT: ${process.env.MIRANDA_PORT}`);
+    process.exit(1);
   }
 }
