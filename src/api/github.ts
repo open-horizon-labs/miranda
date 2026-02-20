@@ -494,3 +494,72 @@ export async function getPREnrichment(
 
   return enrichment;
 }
+
+export interface MergedPR {
+	number: number;
+	title: string;
+	html_url: string;
+	merged_at: string;
+	head: string;
+	body: string | null;
+}
+
+/**
+ * Fetch PRs merged since a given date.
+ * Paginates through closed PRs sorted by updated desc, stopping when
+ * all remaining PRs were last updated before `since`.
+ */
+export async function getMergedPRsSince(
+	owner: string,
+	repo: string,
+	since: Date
+): Promise<MergedPR[]> {
+	const result: MergedPR[] = [];
+	const sinceTime = since.getTime();
+	let page = 1;
+
+	while (true) {
+		const raw = await githubFetch<Array<{
+			number: number;
+			title: string;
+			html_url: string;
+			merged_at: string | null;
+			updated_at: string;
+			head: { ref: string };
+			body: string | null;
+		}>>(
+			`/repos/${owner}/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=${page}`
+		);
+
+		if (raw.length === 0) break;
+
+		let seenOlder = false;
+		for (const item of raw) {
+			// Sorted by updated desc — once we hit one updated before since, all remaining are older
+			if (new Date(item.updated_at).getTime() < sinceTime) {
+				seenOlder = true;
+				break;
+			}
+
+			// Skip closed-but-not-merged PRs
+			if (!item.merged_at) continue;
+
+			// Only include if actually merged at or after since
+			if (new Date(item.merged_at).getTime() >= sinceTime) {
+				result.push({
+					number: item.number,
+					title: item.title,
+					html_url: item.html_url,
+					merged_at: item.merged_at,
+					head: item.head.ref,
+					body: item.body,
+				});
+			}
+		}
+
+		if (seenOlder || raw.length < 100) break;
+		page++;
+	}
+
+	return result;
+}

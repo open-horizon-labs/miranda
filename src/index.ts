@@ -18,6 +18,7 @@ import {
 } from "./state/sessions.js";
 import { startApiServer, stopApiServer } from "./api/server.js";
 import { setApiShutdownFn } from "./api/routes.js";
+import { startScheduler, stopScheduler, setNotifier } from "./scheduler/watcher.js";
 
 // Validate configuration
 validateConfig();
@@ -27,6 +28,13 @@ const bot = new Bot(config.botToken);
 
 // Set bot instance for event handling (allows agent events to send Telegram messages)
 setBot(bot);
+
+// Set scheduler notification function (sends Telegram messages)
+setNotifier((chatId: number, text: string) => {
+	bot.api.sendMessage(chatId, text, { parse_mode: "Markdown" }).catch((err) => {
+		console.error("Scheduler notification failed:", err);
+	});
+});
 
 /**
  * Graceful shutdown function.
@@ -41,6 +49,7 @@ export async function gracefulShutdown(): Promise<void> {
     await bot.stop();
     console.log("   Bot stopped");
     await stopApiServer();
+    stopScheduler();
 
     // Kill all agent processes
     const agents = getAllAgents();
@@ -294,6 +303,9 @@ bot.start({
         console.warn("Failed to set menu button:", err.message ?? err);
       });
     }
+
+    // Start dependency scheduler
+    startScheduler();
   },
 }).catch((err) => {
   console.error("Failed to start:", err);

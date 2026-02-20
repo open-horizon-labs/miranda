@@ -23,6 +23,7 @@ import {
 } from "./github.js";
 import type { Session } from "../types.js";
 import { subscribe, unsubscribe } from "./logs.js";
+import { getSchedulerStatus, enableProject, disableProject, triggerProject } from "../scheduler/watcher.js";
 
 /** Shutdown function for /api/restart. Set by setApiShutdownFn(). */
 let shutdownFn: (() => Promise<void>) | null = null;
@@ -871,6 +872,45 @@ export async function routeApi(
     return true;
   }
 
+  // --- Scheduler routes ---
+
+  // GET /api/scheduler/status
+  if (pathname === "/api/scheduler/status" && method === "GET") {
+    json(res, 200, getSchedulerStatus());
+    return true;
+  }
+
+  // POST /api/scheduler/:project/enable
+  const enableMatch = pathname.match(/^\/api\/scheduler\/([^/]+)\/enable$/);
+  if (enableMatch && method === "POST") {
+    const projectName = decodeURIComponent(enableMatch[1]);
+    enableProject(projectName);
+    json(res, 200, { project: projectName, enabled: true });
+    return true;
+  }
+
+  // POST /api/scheduler/:project/disable
+  const disableMatch = pathname.match(/^\/api\/scheduler\/([^/]+)\/disable$/);
+  if (disableMatch && method === "POST") {
+    const projectName = decodeURIComponent(disableMatch[1]);
+    disableProject(projectName);
+    json(res, 200, { project: projectName, enabled: false });
+    return true;
+  }
+
+  // POST /api/scheduler/:project/trigger
+  const triggerMatch = pathname.match(/^\/api\/scheduler\/([^/]+)\/trigger$/);
+  if (triggerMatch && method === "POST") {
+    const projectName = decodeURIComponent(triggerMatch[1]);
+    try {
+      const result = await triggerProject(projectName);
+      json(res, 200, result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      json(res, 500, { error: message });
+    }
+    return true;
+  }
   // --- Admin routes ---
 
   // POST /api/selfupdate
