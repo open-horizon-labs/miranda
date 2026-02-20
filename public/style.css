@@ -324,7 +324,6 @@ html, body {
 
 .clickable {
   cursor: pointer;
-  color: var(--tg-theme-link-color);
 }
 
 .clickable:active {
