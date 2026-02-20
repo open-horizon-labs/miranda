@@ -17,6 +17,14 @@
     return (webapp && webapp.initData) || "";
   }
 
+  function openLink(url) {
+    if (webapp && webapp.openLink) {
+      webapp.openLink(url);
+    } else {
+      window.open(url, "_blank");
+    }
+  }
+
 
   // ---------------------------------------------------------------------------
   // State
@@ -27,6 +35,7 @@
   var sessions = [];
   var issues = [];
   var prs = [];
+  var repoUrl = null; // GitHub repo URL for constructing issue links
   var refreshTimer = null;
   var pendingRequests = 0;
   var commentPrNum = null; // PR number for comment modal
@@ -242,9 +251,16 @@
     // Header row: number + title
     var header = document.createElement("div");
     header.className = "issue-header";
-    var numSpan = document.createElement("span");
+    var numSpan = document.createElement("a");
     numSpan.className = "issue-number";
     numSpan.textContent = "#" + issue.number;
+    numSpan.href = "#";
+    if (repoUrl) {
+      numSpan.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        openLink(repoUrl + "/issues/" + issue.number);
+      });
+    }
     var titleSpan = document.createElement("span");
     titleSpan.className = "issue-title";
     titleSpan.textContent = issue.title;
@@ -269,8 +285,9 @@
     if (pr) {
       var prDiv = document.createElement("div");
       prDiv.className = "issue-pr";
-      var prStatus = document.createElement("span");
+      var prStatus = document.createElement("a");
       prStatus.className = "pr-status";
+      prStatus.href = "#";
       if (pr.mergeable === true) {
         prStatus.classList.add("ready");
         prStatus.textContent = "\u2713 PR #" + pr.number + " ready";
@@ -280,6 +297,12 @@
       } else {
         prStatus.classList.add("open");
         prStatus.textContent = "PR #" + pr.number + " open";
+      }
+      if (pr.url) {
+        prStatus.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          openLink(pr.url);
+        });
       }
       prDiv.appendChild(prStatus);
       card.appendChild(prDiv);
@@ -309,11 +332,21 @@
     if (pr) {
       if (pr.mergeable === true) {
         var mergeBtn = document.createElement("button");
-        mergeBtn.className = "btn btn-secondary";
+        mergeBtn.className = "btn btn-merge";
         mergeBtn.textContent = "Merge";
         mergeBtn.setAttribute("data-pr", pr.number);
         mergeBtn.addEventListener("click", handleMergeClick);
         actions.appendChild(mergeBtn);
+      } else if (pr.mergeable === false) {
+        var conflictsBtn = document.createElement("span");
+        conflictsBtn.className = "btn btn-merge-disabled";
+        conflictsBtn.textContent = "Conflicts";
+        actions.appendChild(conflictsBtn);
+      } else {
+        var checkingBtn = document.createElement("span");
+        checkingBtn.className = "btn btn-merge-disabled";
+        checkingBtn.textContent = "Checking\u2026";
+        actions.appendChild(checkingBtn);
       }
 
       var commentBtn = document.createElement("button");
@@ -392,15 +425,21 @@
   function handleMergeClick(e) {
     var prNum = e.currentTarget.getAttribute("data-pr");
     if (!prNum || !selectedProject) return;
+    if (!confirm("Squash-merge PR #" + prNum + "?")) return;
     var btn = e.currentTarget;
+    var originalText = btn.textContent;
     btn.disabled = true;
+    btn.textContent = "Merging\u2026";
     api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/prs/" + prNum + "/merge")
       .then(function () {
+        btn.textContent = "Merged \u2713";
+        btn.className = "btn btn-merge-done";
         showToast("PR #" + prNum + " merged", "success");
-        return loadProjectData();
+        setTimeout(function () { loadProjectData(); }, 1500);
       })
       .catch(function (err) {
         btn.disabled = false;
+        btn.textContent = originalText;
         showToast(err.message, "error");
       });
   }
@@ -470,6 +509,7 @@
       api("GET", "/api/projects/" + name + "/issues"),
       api("GET", "/api/projects/" + name + "/prs"),
     ]).then(function (results) {
+      repoUrl = results[0].repoUrl || null;
       issues = results[0].issues || [];
       prs = results[1].prs || [];
       renderIssues();
@@ -533,6 +573,7 @@
       localStorage.removeItem("miranda_project");
     }
     issues = [];
+    repoUrl = null;
     prs = [];
     renderIssues();
     if (selectedProject) {
