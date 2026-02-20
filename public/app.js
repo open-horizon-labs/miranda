@@ -603,9 +603,7 @@
 
       // Action buttons
       html += '<div class="pr-card-actions">';
-      if (ciState === 'failure') {
-        html += '<span class="btn btn-merge-disabled">CI failing</span>';
-      } else if (pr.mergeable === true) {
+      if (pr.mergeable === true) {
         html += '<button class="btn btn-merge" data-pr="' + pr.number + '">Merge</button>';
       } else if (pr.mergeable === false) {
         html += '<span class="btn btn-merge-disabled">Conflicts</span>';
