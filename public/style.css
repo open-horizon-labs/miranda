@@ -511,6 +511,65 @@ a.pr-status:active {
   100% { width: 100%; opacity: 0; }
 }
 
+/* --- Admin Section --- */
+
+.admin-card {
+  background: var(--tg-theme-secondary-bg-color);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-status {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--tg-theme-hint-color);
+}
+
+.admin-status:empty {
+  display: none;
+}
+
+.admin-status .update-commits {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--tg-theme-text-color);
+}
+
+.admin-status .update-commits li {
+  list-style: none;
+  padding: 1px 0;
+}
+
+.admin-status .status-success {
+  color: #30d158;
+}
+
+.admin-status .status-error {
+  color: var(--tg-theme-destructive-text-color);
+}
+
+.admin-status .status-info {
+  color: var(--tg-theme-hint-color);
+}
+
+.btn.updating,
+.btn.restarting {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 /* --- Scrollbar (webkit) --- */
 
 ::-webkit-scrollbar {
