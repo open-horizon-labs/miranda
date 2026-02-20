@@ -628,6 +628,10 @@
     for (var c = 0; c < commentBtns.length; c++) {
       commentBtns[c].addEventListener("click", handleCommentClick);
     }
+    var notesBtns = $prsList.querySelectorAll('[data-action="notes"]');
+    for (var nb = 0; nb < notesBtns.length; nb++) {
+      notesBtns[nb].addEventListener("click", handleNotesClick);
+    }
     var prNumLinks = $prsList.querySelectorAll(".pr-card-number");
     for (var n = 0; n < prNumLinks.length; n++) {
       prNumLinks[n].addEventListener("click", function () {
@@ -675,6 +679,25 @@
       .catch(function (err) {
         btn.disabled = false;
         btn.textContent = originalText;
+        showToast(err.message, "error");
+      });
+  }
+
+  function handleNotesClick(e) {
+    var prNum = e.currentTarget.getAttribute("data-pr");
+    if (!prNum || !selectedProject) return;
+    if (!confirm("Start oh-notes for PR #" + prNum + "?")) return;
+    var btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Starting\u2026";
+    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/prs/" + prNum + "/notes")
+      .then(function () {
+        showToast("Notes started for PR #" + prNum, "success");
+        return loadSessions().then(function () { renderPRs(); });
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = "Notes";
         showToast(err.message, "error");
       });
   }

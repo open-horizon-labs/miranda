@@ -460,6 +460,66 @@ async function handleStartIssue(
 }
 
 /**
+ * POST /api/projects/:name/prs/:num/notes — Kick off oh-notes for a PR.
+ */
+async function handleStartNotes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  projectName: string,
+  prNumber: string,
+  authedUser: TelegramUser
+): Promise<void> {
+  const projectPath = await resolveProject(projectName);
+  if (!projectPath) {
+    json(res, 404, { error: `Project "${projectName}" not found` });
+    return;
+  }
+
+  try {
+    await pullProject(projectPath);
+  } catch {
+    // Best-effort pull
+  }
+
+  const chatId = authedUser.id;
+  const sessionKey = `oh-notes-${projectName}-${prNumber}`;
+  const existing = getSession(sessionKey);
+  if (existing) {
+    json(res, 409, {
+      error: `Notes session already exists for ${projectName} PR #${prNumber}`,
+      session: { taskId: existing.taskId, status: existing.status },
+    });
+    return;
+  }
+
+  try {
+    const sessionId = await spawnSession("oh-notes", prNumber, chatId, {
+      projectPath,
+      projectName,
+    });
+
+    const session: Session = {
+      taskId: sessionKey,
+      sessionId,
+      skill: "oh-notes",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    json(res, 201, {
+      taskId: sessionKey,
+      sessionId,
+      prNumber: parseInt(prNumber, 10),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
  * POST /api/projects/:name/prs/:num/merge — Squash-merge a PR.
  */
 async function handleMergePR(
@@ -801,6 +861,13 @@ export async function routeApi(
   const commentMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/comment$/);
   if (commentMatch && method === "POST") {
     await handleCommentPR(req, res, decodeURIComponent(commentMatch[1]), commentMatch[2]);
+    return true;
+  }
+
+  // POST /api/projects/:name/prs/:num/notes
+  const notesMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/notes$/);
+  if (notesMatch && method === "POST") {
+    await handleStartNotes(req, res, decodeURIComponent(notesMatch[1]), notesMatch[2], authedUser);
     return true;
   }
 
