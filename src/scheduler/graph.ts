@@ -75,6 +75,7 @@ export function detectCycles(graph: DependencyGraph): number[][] {
 		const node = graph.nodes.get(u)!;
 		for (const v of node.dependsOn) {
 			const c = color.get(v);
+			if (c === undefined) continue; // Dependency not in graph (closed/external)
 			if (c === GRAY) {
 				// Found cycle — extract from stack
 				const idx = stack.indexOf(v);

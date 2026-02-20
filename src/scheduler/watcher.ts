@@ -379,7 +379,7 @@ function extractLinkedIssueNumbers(pr: MergedPR): number[] {
 
   // Check body for Closes/Fixes/Resolves #N
   if (pr.body) {
-    const pattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
+    const pattern = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(pr.body)) !== null) {
       issues.add(parseInt(match[1], 10));

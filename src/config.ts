@@ -40,11 +40,15 @@ export const config = {
   webappUrl: process.env.MIRANDA_WEBAPP_URL ?? "",
   schedulerPollInterval: parseInt(process.env.SCHEDULER_POLL_INTERVAL ?? "60000", 10) || 60000,
   schedulerMaxConcurrent: parseInt(process.env.SCHEDULER_MAX_CONCURRENT ?? "3", 10) || 3,
-  schedulerChatId: parseInt(
-    process.env.SCHEDULER_CHAT_ID ??
-      String((process.env.ALLOWED_USER_IDS ?? "").split(",").map((id) => parseInt(id.trim(), 10)).filter((id) => !isNaN(id))[0] ?? 0),
-    10,
-  ) || 0,
+  schedulerChatId: (() => {
+    const explicit = process.env.SCHEDULER_CHAT_ID;
+    if (explicit) return parseInt(explicit, 10) || 0;
+    const allowed = (process.env.ALLOWED_USER_IDS ?? "")
+      .split(",")
+      .map((id) => parseInt(id.trim(), 10))
+      .filter((id) => !isNaN(id));
+    return allowed[0] ?? 0;
+  })(),
 } as const;
 
 export function validateConfig(): void {
