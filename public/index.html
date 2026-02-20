@@ -19,9 +19,13 @@
 </header>
 
 <div class="project-selector">
-  <select id="project-select">
-    <option value="">Select project&hellip;</option>
-  </select>
+  <div class="project-selector-row">
+    <select id="project-select">
+      <option value="">Select project&hellip;</option>
+    </select>
+    <button class="btn btn-primary btn-sm" id="add-project-btn" title="Add project">+</button>
+    <button class="btn btn-danger btn-sm" id="remove-project-btn" title="Remove project" style="display:none">&minus;</button>
+  </div>
 </div>
 
 <section class="section" id="sessions-section">
@@ -64,6 +68,18 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" id="comment-cancel">Cancel</button>
       <button class="btn btn-primary" id="comment-submit">Post</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Project Modal -->
+<div class="modal-overlay" id="add-project-modal">
+  <div class="modal-content">
+    <div class="modal-title">Add Project</div>
+    <input type="text" id="add-project-input" placeholder="owner/repo or GitHub URL" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="add-project-cancel">Cancel</button>
+      <button class="btn btn-primary" id="add-project-submit">Clone</button>
     </div>
   </div>
 </div>

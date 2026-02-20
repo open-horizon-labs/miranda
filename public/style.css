@@ -138,6 +138,25 @@ html, body {
   padding: 0 16px 8px;
 }
 
+.project-selector-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.project-selector-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-sm {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
 .project-selector select {
   width: 100%;
   padding: 10px 12px;
@@ -456,7 +475,8 @@ a.pr-status:active {
   font-weight: 700;
 }
 
-.modal-content textarea {
+.modal-content textarea,
+.modal-content input[type="text"] {
   width: 100%;
   min-height: 100px;
   padding: 10px 12px;
@@ -469,7 +489,8 @@ a.pr-status:active {
   resize: vertical;
 }
 
-.modal-content textarea:focus {
+.modal-content textarea:focus,
+.modal-content input[type="text"]:focus {
   outline: none;
   border-color: var(--tg-theme-button-color);
 }

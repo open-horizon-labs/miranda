@@ -1,6 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getAllSessions, getSession, deleteSession, setSession } from "../state/sessions.js";
 import { scanProjects, pullProject, selfUpdate } from "../projects/scanner.js";
+import { cloneAndInit } from "../projects/clone.js";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
+import { config } from "../config.js";
+import { isPathWithin } from "../utils/paths.js";
 import { stopSession, spawnSession, type SpawnOptions } from "../bot/commands.js";
 import { validateInitData, type TelegramUser } from "./auth.js";
 import { parseDependencies } from "./deps.js";
@@ -31,7 +36,7 @@ export function setApiShutdownFn(fn: () => Promise<void>): void {
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, x-telegram-init-data",
 };
 
@@ -150,6 +155,69 @@ export async function handleGetProjects(_req: IncomingMessage, res: ServerRespon
       inProgressCount: p.inProgressCount,
     }));
     json(res, 200, { projects: result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
+ * POST /api/projects — Clone a new project from GitHub.
+ * Body: { repo: "owner/repo" }
+ */
+async function handleAddProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await parseJsonBody<{ repo?: string }>(req);
+  const repoRef = body?.repo?.trim();
+  if (!repoRef) {
+    json(res, 400, { error: "Missing 'repo' field (e.g. owner/repo)" });
+    return;
+  }
+
+  try {
+    const result = await cloneAndInit(repoRef);
+    if (!result.success) {
+      json(res, 400, { error: result.error ?? "Clone failed" });
+      return;
+    }
+    json(res, 200, {
+      name: result.repoName,
+      path: result.projectPath,
+      warning: result.error ?? null, // partial success (init issues)
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
+ * DELETE /api/projects/:name — Remove a project directory.
+ * Refuses if there are active sessions for this project.
+ */
+async function handleDeleteProject(res: ServerResponse, projectName: string): Promise<void> {
+  const projectPath = join(config.projectsDir, projectName);
+
+  // Safety: ensure path is within projectsDir
+  if (!(await isPathWithin(projectPath, config.projectsDir))) {
+    json(res, 400, { error: "Invalid project name" });
+    return;
+  }
+
+  // Check for active sessions using this project
+  const activeSessions = getAllSessions().filter((s) =>
+    s.taskId.includes(projectName)
+  );
+  if (activeSessions.length > 0) {
+    json(res, 409, {
+      error: `Cannot delete: ${activeSessions.length} active session(s) for this project`,
+      sessions: activeSessions.map((s) => s.taskId),
+    });
+    return;
+  }
+
+  try {
+    await rm(projectPath, { recursive: true, force: true });
+    json(res, 200, { deleted: projectName });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     json(res, 500, { error: message });
@@ -621,6 +689,18 @@ export async function routeApi(
 
   if (pathname === "/api/projects" && method === "GET") {
     await handleGetProjects(req, res);
+    return true;
+  }
+
+  if (pathname === "/api/projects" && method === "POST") {
+    await handleAddProject(req, res);
+    return true;
+  }
+
+  // DELETE /api/projects/:name
+  const deleteProjectMatch = pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (deleteProjectMatch && method === "DELETE") {
+    await handleDeleteProject(res, decodeURIComponent(deleteProjectMatch[1]));
     return true;
   }
 

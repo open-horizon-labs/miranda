@@ -66,6 +66,12 @@
   var $commentSubmit = document.getElementById("comment-submit");
   var $adminStatus = document.getElementById("admin-status");
   var $updateRestartBtn = document.getElementById("update-restart-btn");
+  var $addProjectBtn = document.getElementById("add-project-btn");
+  var $removeProjectBtn = document.getElementById("remove-project-btn");
+  var $addProjectModal = document.getElementById("add-project-modal");
+  var $addProjectInput = document.getElementById("add-project-input");
+  var $addProjectCancel = document.getElementById("add-project-cancel");
+  var $addProjectSubmit = document.getElementById("add-project-submit");
 
   var adminBusy = false; // prevents concurrent admin operations
 
@@ -666,10 +672,12 @@
         selectedProject = projects[0].name;
       }
     }
+    $removeProjectBtn.style.display = selectedProject ? "" : "none";
   }
 
   $projectSelect.addEventListener("change", function () {
     selectedProject = $projectSelect.value || null;
+    $removeProjectBtn.style.display = selectedProject ? "" : "none";
     if (selectedProject) {
       localStorage.setItem("miranda_project", selectedProject);
     } else {
@@ -711,6 +719,73 @@
     if (e.target === $commentModal) {
       closeCommentModal();
     }
+  });
+
+  // --- Add/Remove project handlers ---
+
+  $addProjectBtn.addEventListener("click", function () {
+    $addProjectInput.value = "";
+    $addProjectModal.classList.add("visible");
+    $addProjectInput.focus();
+  });
+
+  $addProjectCancel.addEventListener("click", function () {
+    $addProjectModal.classList.remove("visible");
+  });
+
+  $addProjectModal.addEventListener("click", function (e) {
+    if (e.target === $addProjectModal) {
+      $addProjectModal.classList.remove("visible");
+    }
+  });
+
+  $addProjectSubmit.addEventListener("click", function () {
+    var repo = $addProjectInput.value.trim();
+    if (!repo) return;
+    $addProjectSubmit.disabled = true;
+    $addProjectSubmit.classList.add("updating");
+    api("POST", "/api/projects", { repo: repo })
+      .then(function (data) {
+        $addProjectModal.classList.remove("visible");
+        var msg = 'Project "' + data.name + '" added';
+        if (data.warning) msg += ' (warning: ' + data.warning + ')';
+        showToast(msg, "success");
+        selectedProject = data.name;
+        return loadProjects().then(function () {
+          $projectSelect.value = data.name;
+          localStorage.setItem("miranda_project", data.name);
+          $removeProjectBtn.style.display = "";
+          return loadProjectData();
+        });
+      })
+      .catch(function (err) {
+        showToast(err.message, "error");
+      })
+      .finally(function () {
+        $addProjectSubmit.disabled = false;
+        $addProjectSubmit.classList.remove("updating");
+      });
+  });
+
+  $removeProjectBtn.addEventListener("click", function () {
+    if (!selectedProject) return;
+    if (!confirm('Remove project "' + selectedProject + '"? This deletes the local clone.')) return;
+    api("DELETE", "/api/projects/" + encodeURIComponent(selectedProject))
+      .then(function () {
+        showToast('Project "' + selectedProject + '" removed', "success");
+        selectedProject = null;
+        localStorage.removeItem("miranda_project");
+        $removeProjectBtn.style.display = "none";
+        issues = [];
+        prs = [];
+        repoUrl = null;
+        enrichmentData = {};
+        renderIssues();
+        return loadProjects();
+      })
+      .catch(function (err) {
+        showToast(err.message, "error");
+      });
   });
 
   // --- Admin button handlers ---
