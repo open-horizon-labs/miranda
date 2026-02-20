@@ -28,6 +28,8 @@ export interface GitHubPR {
   /** Branch the PR is from. */
   head: string;
   body: string | null;
+  /** SHA of the PR head commit (for CI status lookups). */
+  headSha: string;
 }
 
 export interface GitHubMergeResult {
@@ -207,7 +209,7 @@ export async function getOpenPRs(
       mergeable: boolean | null;
       html_url: string;
       base: { ref: string };
-      head: { ref: string };
+      head: { ref: string; sha: string };
       body: string | null;
     }>>(`/repos/${owner}/${repo}/pulls?state=open&per_page=100&page=${page}`);
 
@@ -222,6 +224,7 @@ export async function getOpenPRs(
         html_url: item.html_url,
         base: item.base.ref,
         head: item.head.ref,
+        headSha: item.head.sha,
         body: item.body,
       });
     }
@@ -311,4 +314,169 @@ export function findLinkedPR(
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// CI Status + CodeRabbit review enrichment
+// ---------------------------------------------------------------------------
+
+export interface CICheck {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export interface CIStatus {
+  /** Overall state: "success" | "failure" | "pending" | "none". */
+  state: "success" | "failure" | "pending" | "none";
+  checks: CICheck[];
+}
+
+export interface CodeRabbitStatus {
+  reviewed: boolean;
+  state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "PENDING" | null;
+}
+
+export interface PREnrichment {
+  ci: CIStatus;
+  coderabbit: CodeRabbitStatus;
+}
+
+/** Simple TTL cache entry. */
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+const ENRICHMENT_TTL_MS = 30_000; // 30 seconds
+const enrichmentCache = new Map<string, CacheEntry<PREnrichment>>();
+
+/**
+ * Fetch CI status for a commit SHA.
+ * Combines the legacy combined status endpoint with check runs.
+ */
+async function fetchCIStatus(
+  owner: string,
+  repo: string,
+  sha: string
+): Promise<CIStatus> {
+  const [combinedStatus, checkRuns] = await Promise.all([
+    githubFetch<{
+      state: string;
+      statuses: Array<{ context: string; state: string }>;
+    }>(`/repos/${owner}/${repo}/commits/${sha}/status`),
+    githubFetch<{
+      check_runs: Array<{
+        name: string;
+        status: string;
+        conclusion: string | null;
+      }>;
+    }>(`/repos/${owner}/${repo}/commits/${sha}/check-runs`),
+  ]);
+
+  const checks: CICheck[] = checkRuns.check_runs.map((cr) => ({
+    name: cr.name,
+    status: cr.status,
+    conclusion: cr.conclusion,
+  }));
+
+  // Also include legacy statuses as checks
+  for (const s of combinedStatus.statuses) {
+    // Avoid duplicates if a status also appears as a check run
+    if (!checks.some((c) => c.name === s.context)) {
+      checks.push({
+        name: s.context,
+        status: "completed",
+        conclusion: s.state === "success" ? "success" : s.state === "failure" ? "failure" : s.state,
+      });
+    }
+  }
+
+  // Determine overall state
+  if (checks.length === 0) {
+    return { state: "none", checks };
+  }
+
+  const hasFailure = checks.some(
+    (c) => c.conclusion === "failure" || c.conclusion === "cancelled" || c.conclusion === "timed_out"
+  );
+  if (hasFailure) {
+    return { state: "failure", checks };
+  }
+
+  const allComplete = checks.every((c) => c.status === "completed");
+  const allSuccess = checks.every(
+    (c) => c.conclusion === "success" || c.conclusion === "skipped" || c.conclusion === "neutral"
+  );
+  if (allComplete && allSuccess) {
+    return { state: "success", checks };
+  }
+
+  return { state: "pending", checks };
+}
+
+/**
+ * Fetch CodeRabbit review status for a PR.
+ * Looks for reviews where user.login contains "coderabbit" (case-insensitive).
+ */
+async function fetchCodeRabbitReview(
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<CodeRabbitStatus> {
+  const reviews = await githubFetch<Array<{
+    user: { login: string } | null;
+    state: string;
+  }>>(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`);
+
+  // Filter for CodeRabbit reviews
+  const coderabbitReviews = reviews.filter(
+    (r) => r.user?.login?.toLowerCase().includes("coderabbit")
+  );
+
+  if (coderabbitReviews.length === 0) {
+    return { reviewed: false, state: null };
+  }
+
+  // Use the most recent CodeRabbit review state
+  const latestState = coderabbitReviews[coderabbitReviews.length - 1].state;
+  const normalizedState = latestState as CodeRabbitStatus["state"];
+  return { reviewed: true, state: normalizedState };
+}
+
+/**
+ * Get enrichment data (CI + CodeRabbit) for a single PR.
+ * Results are cached for 30 seconds.
+ */
+export async function getPREnrichment(
+  owner: string,
+  repo: string,
+  pr: GitHubPR
+): Promise<PREnrichment> {
+  const cacheKey = `${owner}/${repo}/${pr.number}/${pr.headSha}`;
+  const now = Date.now();
+
+  const cached = enrichmentCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
+  }
+
+  const [ci, coderabbit] = await Promise.all([
+    fetchCIStatus(owner, repo, pr.headSha),
+    fetchCodeRabbitReview(owner, repo, pr.number),
+  ]);
+
+  const enrichment: PREnrichment = { ci, coderabbit };
+  enrichmentCache.set(cacheKey, { data: enrichment, expiresAt: now + ENRICHMENT_TTL_MS });
+
+  // Prune expired entries periodically (every 50 writes)
+  if (enrichmentCache.size > 50) {
+    for (const [key, entry] of enrichmentCache) {
+      if (entry.expiresAt <= now) {
+        enrichmentCache.delete(key);
+      }
+    }
+  }
+
+  return enrichment;
 }

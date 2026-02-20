@@ -372,6 +372,28 @@ a.pr-status:active {
 .pr-status.conflicts { color: #ff9f0a; }
 .pr-status.open { color: var(--tg-theme-hint-color); }
 
+/* CI status indicators */
+.pr-ci, .pr-coderabbit {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.pr-ci:empty, .pr-coderabbit:empty {
+  display: none;
+}
+
+.ci-success { color: #30d158; }
+.ci-failure { color: #ff453a; }
+.ci-pending { color: #ffd60a; }
+.ci-none { color: var(--tg-theme-hint-color); }
+
+.cr-APPROVED { color: #30d158; }
+.cr-CHANGES_REQUESTED { color: #ff453a; }
+.cr-COMMENTED, .cr-PENDING { color: #ffd60a; }
+.cr-none { color: var(--tg-theme-hint-color); }
+
 .issue-blocked-by {
   font-size: 12px;
   color: var(--tg-theme-hint-color);
