@@ -326,8 +326,11 @@ a.issue-number:active {
   font-weight: 600;
   flex: 1;
   min-width: 0;
-  color: inherit;
   text-decoration: none;
+}
+
+a.issue-title {
+  color: var(--tg-theme-link-color);
 }
 
 a.issue-title:hover,
