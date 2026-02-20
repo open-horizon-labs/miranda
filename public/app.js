@@ -254,12 +254,18 @@
     var numSpan = document.createElement("a");
     numSpan.className = "issue-number";
     numSpan.textContent = "#" + issue.number;
-    numSpan.href = "#";
     if (repoUrl) {
-      numSpan.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        openLink(repoUrl + "/issues/" + issue.number);
-      });
+      numSpan.href = repoUrl + "/issues/" + issue.number;
+      numSpan.target = "_blank";
+      numSpan.rel = "noopener";
+    }
+    var titleSpan = document.createElement("a");
+    titleSpan.className = "issue-title";
+    titleSpan.textContent = issue.title;
+    if (repoUrl) {
+      titleSpan.href = repoUrl + "/issues/" + issue.number;
+      titleSpan.target = "_blank";
+      titleSpan.rel = "noopener";
     }
     var titleSpan = document.createElement("span");
     titleSpan.className = "issue-title";
@@ -287,7 +293,11 @@
       prDiv.className = "issue-pr";
       var prStatus = document.createElement("a");
       prStatus.className = "pr-status";
-      prStatus.href = "#";
+      if (pr.url) {
+        prStatus.href = pr.url;
+        prStatus.target = "_blank";
+        prStatus.rel = "noopener";
+      }
       if (pr.mergeable === true) {
         prStatus.classList.add("ready");
         prStatus.textContent = "\u2713 PR #" + pr.number + " ready";
@@ -297,12 +307,6 @@
       } else {
         prStatus.classList.add("open");
         prStatus.textContent = "PR #" + pr.number + " open";
-      }
-      if (pr.url) {
-        prStatus.addEventListener("click", function (ev) {
-          ev.preventDefault();
-          openLink(pr.url);
-        });
       }
       prDiv.appendChild(prStatus);
       card.appendChild(prDiv);

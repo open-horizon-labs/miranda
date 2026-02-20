@@ -326,6 +326,13 @@ a.issue-number:active {
   font-weight: 600;
   flex: 1;
   min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.issue-title:hover,
+a.issue-number:hover {
+  text-decoration: underline;
 }
 
 .issue-labels {
