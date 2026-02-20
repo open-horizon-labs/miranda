@@ -39,6 +39,9 @@
   var refreshTimer = null;
   var pendingRequests = 0;
   var commentPrNum = null; // PR number for comment modal
+  var enrichmentData = {}; // { [prNumber]: { ci, coderabbit } }
+  var enrichmentCacheTime = 0; // timestamp of last enrichment fetch
+  var ENRICHMENT_TTL = 30000; // 30 seconds client-side cache
 
   var REFRESH_INTERVAL = 10000; // 10 seconds
 
@@ -309,6 +312,26 @@
         prStatus.textContent = "PR #" + pr.number + " open";
       }
       prDiv.appendChild(prStatus);
+      // CI and CodeRabbit indicators (filled async from enrichment data)
+      var enrichment = enrichmentData[pr.number];
+      var ciSpan = document.createElement("span");
+      ciSpan.className = "pr-ci";
+      ciSpan.setAttribute("data-pr-ci", pr.number);
+      if (enrichment && enrichment.ci) {
+        ciSpan.textContent = ciIndicator(enrichment.ci.state);
+        ciSpan.className = "pr-ci ci-" + enrichment.ci.state;
+        ciSpan.title = ciTooltip(enrichment.ci);
+      }
+      prDiv.appendChild(ciSpan);
+
+      var crSpan = document.createElement("span");
+      crSpan.className = "pr-coderabbit";
+      crSpan.setAttribute("data-pr-cr", pr.number);
+      if (enrichment && enrichment.coderabbit) {
+        crSpan.textContent = coderabbitIndicator(enrichment.coderabbit);
+        crSpan.className = "pr-coderabbit cr-" + (enrichment.coderabbit.reviewed ? enrichment.coderabbit.state : "none");
+      }
+      prDiv.appendChild(crSpan);
       card.appendChild(prDiv);
     }
 
@@ -334,7 +357,14 @@
     actions.appendChild(startBtn);
 
     if (pr) {
-      if (pr.mergeable === true) {
+      var ciState = enrichment && enrichment.ci ? enrichment.ci.state : null;
+      var ciFailing = ciState === "failure";
+      if (ciFailing) {
+        var ciFailBtn = document.createElement("span");
+        ciFailBtn.className = "btn btn-merge-disabled";
+        ciFailBtn.textContent = "CI failing";
+        actions.appendChild(ciFailBtn);
+      } else if (pr.mergeable === true) {
         var mergeBtn = document.createElement("button");
         mergeBtn.className = "btn btn-merge";
         mergeBtn.textContent = "Merge";
@@ -504,6 +534,7 @@
     if (!selectedProject) {
       issues = [];
       prs = [];
+      enrichmentData = {};
       renderIssues();
       return Promise.resolve();
     }
@@ -517,7 +548,64 @@
       issues = results[0].issues || [];
       prs = results[1].prs || [];
       renderIssues();
+
+      // Async enrichment: fetch CI/CodeRabbit status after initial render
+      loadPREnrichment();
     });
+  }
+
+  /**
+   * Fetch PR enrichment (CI + CodeRabbit) and update DOM.
+   * Uses client-side 30s cache to avoid redundant requests.
+   */
+  function loadPREnrichment() {
+    if (!selectedProject) return;
+
+    var now = Date.now();
+    if (enrichmentCacheTime && (now - enrichmentCacheTime) < ENRICHMENT_TTL) {
+      // Cache still valid — just re-apply to DOM (issues may have re-rendered)
+      applyEnrichmentToDOM();
+      return;
+    }
+
+    var name = encodeURIComponent(selectedProject);
+    api("GET", "/api/projects/" + name + "/pr-enrichment")
+      .then(function (data) {
+        enrichmentData = data.enrichment || {};
+        enrichmentCacheTime = Date.now();
+        // Re-render issues to include enrichment data in merge button logic
+        renderIssues();
+      })
+      .catch(function (err) {
+        console.warn("PR enrichment failed:", err.message);
+      });
+  }
+
+  /**
+   * Apply enrichment data to already-rendered DOM elements.
+   * Updates CI and CodeRabbit indicator spans by data attribute.
+   */
+  function applyEnrichmentToDOM() {
+    var ciSpans = document.querySelectorAll("[data-pr-ci]");
+    for (var i = 0; i < ciSpans.length; i++) {
+      var prNum = ciSpans[i].getAttribute("data-pr-ci");
+      var e = enrichmentData[prNum];
+      if (e && e.ci) {
+        ciSpans[i].textContent = ciIndicator(e.ci.state);
+        ciSpans[i].className = "pr-ci ci-" + e.ci.state;
+        ciSpans[i].title = ciTooltip(e.ci);
+      }
+    }
+
+    var crSpans = document.querySelectorAll("[data-pr-cr]");
+    for (var j = 0; j < crSpans.length; j++) {
+      var prNum2 = crSpans[j].getAttribute("data-pr-cr");
+      var e2 = enrichmentData[prNum2];
+      if (e2 && e2.coderabbit) {
+        crSpans[j].textContent = coderabbitIndicator(e2.coderabbit);
+        crSpans[j].className = "pr-coderabbit cr-" + (e2.coderabbit.reviewed ? e2.coderabbit.state : "none");
+      }
+    }
   }
 
   function refreshAll() {
@@ -579,6 +667,8 @@
     issues = [];
     repoUrl = null;
     prs = [];
+    enrichmentData = {};
+    enrichmentCacheTime = 0;
     renderIssues();
     if (selectedProject) {
       loadProjectData().catch(function (err) {
@@ -656,6 +746,38 @@
       .replace(/'/g, "&#39;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
+  }
+
+  // ---------------------------------------------------------------------------
+  // CI / CodeRabbit indicator helpers
+  // ---------------------------------------------------------------------------
+
+  function ciIndicator(state) {
+    switch (state) {
+      case "success": return "\u2705CI";
+      case "failure": return "\u274CCI";
+      case "pending": return "\u23F3CI";
+      default: return "";
+    }
+  }
+
+  function ciTooltip(ci) {
+    if (!ci || !ci.checks || ci.checks.length === 0) return "";
+    return ci.checks.map(function (c) {
+      var icon = c.conclusion === "success" ? "\u2705" : c.conclusion === "failure" ? "\u274C" : "\u23F3";
+      return icon + " " + c.name;
+    }).join("\n");
+  }
+
+  function coderabbitIndicator(cr) {
+    if (!cr || !cr.reviewed) return "";
+    switch (cr.state) {
+      case "APPROVED": return "\uD83D\uDC30\u2705";
+      case "CHANGES_REQUESTED": return "\uD83D\uDC30\u274C";
+      case "COMMENTED":
+      case "PENDING": return "\uD83D\uDC30\u23F3";
+      default: return "\uD83D\uDC30";
+    }
   }
 
   // ---------------------------------------------------------------------------

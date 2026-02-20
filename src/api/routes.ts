@@ -11,8 +11,10 @@ import {
   mergePR,
   commentOnPR,
   findLinkedPR,
+  getPREnrichment,
   GitHubRateLimitError,
   type GitHubPR,
+  type PREnrichment,
 } from "./github.js";
 import type { Session } from "../types.js";
 
@@ -458,6 +460,70 @@ async function handleCommentPR(
   }
 }
 
+/**
+ * GET /api/projects/:name/pr-enrichment — CI status and CodeRabbit review for all linked PRs.
+ * Returns { enrichment: { [prNumber]: { ci, coderabbit } } }.
+ * Results are cached 30s on the backend to avoid hammering GitHub API.
+ */
+async function handleGetPREnrichment(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  projectName: string
+): Promise<void> {
+  const projectPath = await resolveProject(projectName);
+  if (!projectPath) {
+    json(res, 404, { error: `Project "${projectName}" not found` });
+    return;
+  }
+
+  try {
+    const { owner, repo } = await getRepoInfo(projectPath);
+    const [issues, prs] = await Promise.all([
+      getOpenIssues(owner, repo),
+      getOpenPRs(owner, repo),
+    ]);
+
+    // Find PRs linked to tracked issues (skip unrelated PRs)
+    const linkedPRs: GitHubPR[] = [];
+    for (const issue of issues) {
+      const pr = findLinkedPR(prs, issue.number);
+      if (pr && !linkedPRs.some((p) => p.number === pr.number)) {
+        linkedPRs.push(pr);
+      }
+    }
+
+    // Fetch enrichment for all linked PRs in parallel
+    const enrichmentEntries = await Promise.all(
+      linkedPRs.map(async (pr) => {
+        try {
+          const data = await getPREnrichment(owner, repo, pr);
+          return [pr.number, data] as [number, PREnrichment];
+        } catch (err) {
+          // Best-effort: return a degraded result on error
+          console.warn(`Failed to enrich PR #${pr.number}:`, err);
+          return [pr.number, {
+            ci: { state: "none" as const, checks: [] },
+            coderabbit: { reviewed: false, state: null },
+          }] as [number, PREnrichment];
+        }
+      })
+    );
+
+    const enrichment: Record<number, PREnrichment> = {};
+    for (const [num, data] of enrichmentEntries) {
+      enrichment[num] = data;
+    }
+
+    json(res, 200, { enrichment });
+  } catch (error) {
+    if (error instanceof GitHubRateLimitError) {
+      json(res, 429, { error: error.message });
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
 
 /**
  * Route an API request to the appropriate handler.
@@ -537,6 +603,13 @@ export async function routeApi(
   const commentMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/comment$/);
   if (commentMatch && method === "POST") {
     await handleCommentPR(req, res, decodeURIComponent(commentMatch[1]), commentMatch[2]);
+    return true;
+  }
+
+  // GET /api/projects/:name/pr-enrichment
+  const enrichMatch = pathname.match(/^\/api\/projects\/([^/]+)\/pr-enrichment$/);
+  if (enrichMatch && method === "GET") {
+    await handleGetPREnrichment(req, res, decodeURIComponent(enrichMatch[1]));
     return true;
   }
 
