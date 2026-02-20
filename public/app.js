@@ -53,6 +53,9 @@
   var $sessionsList = document.getElementById("sessions-list");
   var $sessionsCount = document.getElementById("sessions-count");
   var $sessionsSection = document.getElementById("sessions-section");
+  var $prsSection = document.getElementById("prs-section");
+  var $prsList = document.getElementById("prs-list");
+  var $prsCount = document.getElementById("prs-count");
   var $issuesSection = document.getElementById("issues-section");
   var $issuesTree = document.getElementById("issues-tree");
   var $issuesCount = document.getElementById("issues-count");
@@ -297,49 +300,26 @@
       card.appendChild(labelsDiv);
     }
 
-    // PR status
+    // PR badge (compact — full PR details in separate section)
     if (pr) {
-      var prDiv = document.createElement("div");
-      prDiv.className = "issue-pr";
-      var prStatus = document.createElement("span");
-      prStatus.className = "pr-status clickable";
+      var prBadge = document.createElement("span");
+      prBadge.className = "issue-pr-badge clickable";
+      if (pr.mergeable === true) {
+        prBadge.classList.add("ready");
+        prBadge.textContent = "\u2713 PR #" + pr.number;
+      } else if (pr.mergeable === false) {
+        prBadge.classList.add("conflicts");
+        prBadge.textContent = "\u2717 PR #" + pr.number;
+      } else {
+        prBadge.classList.add("open");
+        prBadge.textContent = "PR #" + pr.number;
+      }
       if (pr.url) {
-        prStatus.addEventListener("click", (function (url) {
+        prBadge.addEventListener("click", (function (url) {
           return function () { openLink(url); };
         })(pr.url));
       }
-      if (pr.mergeable === true) {
-        prStatus.classList.add("ready");
-        prStatus.textContent = "\u2713 PR #" + pr.number + " ready";
-      } else if (pr.mergeable === false) {
-        prStatus.classList.add("conflicts");
-        prStatus.textContent = "\u2717 PR #" + pr.number + " conflicts";
-      } else {
-        prStatus.classList.add("open");
-        prStatus.textContent = "PR #" + pr.number + " open";
-      }
-      prDiv.appendChild(prStatus);
-      // CI and CodeRabbit indicators (filled async from enrichment data)
-      var enrichment = enrichmentData[pr.number];
-      var ciSpan = document.createElement("span");
-      ciSpan.className = "pr-ci";
-      ciSpan.setAttribute("data-pr-ci", pr.number);
-      if (enrichment && enrichment.ci) {
-        ciSpan.textContent = ciIndicator(enrichment.ci.state);
-        ciSpan.className = "pr-ci ci-" + enrichment.ci.state;
-        ciSpan.title = ciTooltip(enrichment.ci);
-      }
-      prDiv.appendChild(ciSpan);
-
-      var crSpan = document.createElement("span");
-      crSpan.className = "pr-coderabbit";
-      crSpan.setAttribute("data-pr-cr", pr.number);
-      if (enrichment && enrichment.coderabbit) {
-        crSpan.textContent = coderabbitIndicator(enrichment.coderabbit);
-        crSpan.className = "pr-coderabbit cr-" + (enrichment.coderabbit.reviewed ? enrichment.coderabbit.state : "none");
-      }
-      prDiv.appendChild(crSpan);
-      card.appendChild(prDiv);
+      card.appendChild(prBadge);
     }
 
     // Blocked by info
@@ -373,40 +353,6 @@
       actions.appendChild(startBtn);
     }
 
-    if (pr) {
-      var ciState = enrichment && enrichment.ci ? enrichment.ci.state : null;
-      var ciFailing = ciState === "failure";
-      if (ciFailing) {
-        var ciFailBtn = document.createElement("span");
-        ciFailBtn.className = "btn btn-merge-disabled";
-        ciFailBtn.textContent = "CI failing";
-        actions.appendChild(ciFailBtn);
-      } else if (pr.mergeable === true) {
-        var mergeBtn = document.createElement("button");
-        mergeBtn.className = "btn btn-merge";
-        mergeBtn.textContent = "Merge";
-        mergeBtn.setAttribute("data-pr", pr.number);
-        mergeBtn.addEventListener("click", handleMergeClick);
-        actions.appendChild(mergeBtn);
-      } else if (pr.mergeable === false) {
-        var conflictsBtn = document.createElement("span");
-        conflictsBtn.className = "btn btn-merge-disabled";
-        conflictsBtn.textContent = "Conflicts";
-        actions.appendChild(conflictsBtn);
-      } else {
-        var checkingBtn = document.createElement("span");
-        checkingBtn.className = "btn btn-merge-disabled";
-        checkingBtn.textContent = "Checking\u2026";
-        actions.appendChild(checkingBtn);
-      }
-
-      var commentBtn = document.createElement("button");
-      commentBtn.className = "btn btn-secondary";
-      commentBtn.textContent = "Comment";
-      commentBtn.setAttribute("data-pr", pr.number);
-      commentBtn.addEventListener("click", handleCommentClick);
-      actions.appendChild(commentBtn);
-    }
 
     card.appendChild(actions);
     li.appendChild(card);
@@ -427,6 +373,7 @@
   function renderIssues() {
     if (!selectedProject) {
       $issuesSection.style.display = "none";
+      $prsSection.style.display = "none";
       return;
     }
 
@@ -451,6 +398,96 @@
 
     $issuesTree.innerHTML = "";
     $issuesTree.appendChild(ul);
+  }
+
+  function renderPRs() {
+    if (!selectedProject) {
+      $prsSection.style.display = "none";
+      return;
+    }
+
+    // Collect PRs from issues that have linked PRs
+    var prList = [];
+    for (var i = 0; i < issues.length; i++) {
+      if (issues[i].pr) {
+        prList.push({ issue: issues[i], pr: issues[i].pr });
+      }
+    }
+
+    if (prList.length === 0) {
+      $prsSection.style.display = "none";
+      return;
+    }
+
+    $prsSection.style.display = "";
+    $prsCount.textContent = prList.length;
+    $prsCount.style.display = "";
+
+    var html = "";
+    for (var j = 0; j < prList.length; j++) {
+      var pr = prList[j].pr;
+      var issue = prList[j].issue;
+      var enrichment = enrichmentData[pr.number];
+      var ciState = enrichment && enrichment.ci ? enrichment.ci.state : null;
+
+      html += '<div class="pr-card">';
+      // PR title row
+      html += '<div class="pr-card-header">';
+      html += '<span class="pr-card-number clickable" data-url="' + escAttr(pr.url || '') + '">#' + pr.number + '</span>';
+      html += '<span class="pr-card-issue">#' + issue.number + ' ' + esc(issue.title) + '</span>';
+      html += '</div>';
+
+      // Status row: mergeable + CI + CodeRabbit
+      html += '<div class="pr-card-status">';
+      if (pr.mergeable === true) {
+        html += '<span class="pr-status ready">\u2713 Ready</span>';
+      } else if (pr.mergeable === false) {
+        html += '<span class="pr-status conflicts">\u2717 Conflicts</span>';
+      } else {
+        html += '<span class="pr-status open">Checking\u2026</span>';
+      }
+      if (enrichment && enrichment.ci) {
+        html += '<span class="pr-ci ci-' + enrichment.ci.state + '" title="' + escAttr(ciTooltip(enrichment.ci)) + '">' + ciIndicator(enrichment.ci.state) + '</span>';
+      }
+      if (enrichment && enrichment.coderabbit && enrichment.coderabbit.reviewed) {
+        html += '<span class="pr-coderabbit cr-' + enrichment.coderabbit.state + '">' + coderabbitIndicator(enrichment.coderabbit) + '</span>';
+      }
+      html += '</div>';
+
+      // Action buttons
+      html += '<div class="pr-card-actions">';
+      if (ciState === 'failure') {
+        html += '<span class="btn btn-merge-disabled">CI failing</span>';
+      } else if (pr.mergeable === true) {
+        html += '<button class="btn btn-merge" data-pr="' + pr.number + '">Merge</button>';
+      } else if (pr.mergeable === false) {
+        html += '<span class="btn btn-merge-disabled">Conflicts</span>';
+      } else {
+        html += '<span class="btn btn-merge-disabled">Checking\u2026</span>';
+      }
+      html += '<button class="btn btn-secondary" data-pr="' + pr.number + '" data-action="comment">Comment</button>';
+      html += '</div>';
+      html += '</div>';
+    }
+
+    $prsList.innerHTML = html;
+
+    // Attach handlers
+    var mergeBtns = $prsList.querySelectorAll(".btn-merge");
+    for (var m = 0; m < mergeBtns.length; m++) {
+      mergeBtns[m].addEventListener("click", handleMergeClick);
+    }
+    var commentBtns = $prsList.querySelectorAll('[data-action="comment"]');
+    for (var c = 0; c < commentBtns.length; c++) {
+      commentBtns[c].addEventListener("click", handleCommentClick);
+    }
+    var prNumLinks = $prsList.querySelectorAll(".pr-card-number");
+    for (var n = 0; n < prNumLinks.length; n++) {
+      prNumLinks[n].addEventListener("click", function () {
+        var url = this.getAttribute("data-url");
+        if (url) openLink(url);
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -553,6 +590,7 @@
       prs = [];
       enrichmentData = {};
       renderIssues();
+      renderPRs();
       return Promise.resolve();
     }
 
@@ -565,6 +603,7 @@
       issues = results[0].issues || [];
       prs = results[1].prs || [];
       renderIssues();
+      renderPRs();
 
       // Async enrichment: fetch CI/CodeRabbit status after initial render
       loadPREnrichment();
@@ -592,6 +631,7 @@
         enrichmentCacheTime = Date.now();
         // Re-render issues to include enrichment data in merge button logic
         renderIssues();
+        renderPRs();
       })
       .catch(function (err) {
         console.warn("PR enrichment failed:", err.message);
@@ -689,6 +729,7 @@
     enrichmentData = {};
     enrichmentCacheTime = 0;
     renderIssues();
+    renderPRs();
     if (selectedProject) {
       loadProjectData().catch(function (err) {
         showToast(err.message, "error");
@@ -781,6 +822,7 @@
         repoUrl = null;
         enrichmentData = {};
         renderIssues();
+        renderPRs();
         return loadProjects();
       })
       .catch(function (err) {

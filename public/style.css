@@ -406,6 +406,67 @@ a.pr-status:active {
 .cr-COMMENTED, .cr-PENDING { color: #ffd60a; }
 .cr-none { color: var(--tg-theme-hint-color); }
 
+/* --- PR Cards (dedicated section) --- */
+
+.pr-card {
+  background: var(--tg-theme-secondary-bg-color);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pr-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pr-card-number {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tg-theme-link-color);
+  flex-shrink: 0;
+}
+
+.pr-card-issue {
+  font-size: 13px;
+  color: var(--tg-theme-hint-color);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-card-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.pr-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* --- Issue PR badge (compact, inside issue card) --- */
+
+.issue-pr-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.issue-pr-badge.ready { color: #30d158; }
+.issue-pr-badge.conflicts { color: #ff9f0a; }
+.issue-pr-badge.open { color: var(--tg-theme-hint-color); }
+
 .issue-blocked-by {
   font-size: 12px;
   color: var(--tg-theme-hint-color);
