@@ -34,6 +34,7 @@ export const config = {
   // Path to oh-my-pi CLI (packages/coding-agent/dist/cli.js)
   // Required for agent process management
   ompCliPath: process.env.OMP_CLI_PATH ?? "",
+  githubToken: process.env.GITHUB_TOKEN ?? "",
   port: parseInt(process.env.MIRANDA_PORT ?? "3847", 10),
 } as const;
 
