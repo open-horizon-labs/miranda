@@ -351,11 +351,21 @@
     actions.className = "issue-actions";
 
     var startBtn = document.createElement("button");
-    startBtn.className = "btn btn-primary";
-    startBtn.textContent = "Start";
-    startBtn.setAttribute("data-issue", issue.number);
-    startBtn.addEventListener("click", handleStartClick);
-    actions.appendChild(startBtn);
+    var issueSessionId = selectedProject ? "oh-task-" + selectedProject + "-" + issue.number : null;
+    var hasActiveSession = issueSessionId && sessions.some(function (s) { return s.taskId === issueSessionId; });
+    if (hasActiveSession) {
+      var runningBtn = document.createElement("span");
+      runningBtn.className = "btn btn-in-progress";
+      runningBtn.textContent = "In Progress\u2026";
+      actions.appendChild(runningBtn);
+    } else {
+      var startBtn = document.createElement("button");
+      startBtn.className = "btn btn-primary";
+      startBtn.textContent = "Start";
+      startBtn.setAttribute("data-issue", issue.number);
+      startBtn.addEventListener("click", handleStartClick);
+      actions.appendChild(startBtn);
+    }
 
     if (pr) {
       var ciState = enrichment && enrichment.ci ? enrichment.ci.state : null;

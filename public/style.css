@@ -416,6 +416,13 @@ a.pr-status:active {
   cursor: default;
 }
 
+.btn-in-progress {
+  background: rgba(48, 209, 88, 0.15);
+  color: #30d158;
+  cursor: default;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 /* --- Modal --- */
 
 .modal-overlay {
