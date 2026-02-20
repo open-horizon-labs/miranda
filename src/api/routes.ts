@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { getAllSessions, getSession, deleteSession, setSession } from "../state/sessions.js";
 import { scanProjects, pullProject } from "../projects/scanner.js";
 import { stopSession, spawnSession, type SpawnOptions } from "../bot/commands.js";
-import { validateInitData } from "./auth.js";
+import { validateInitData, type TelegramUser } from "./auth.js";
 import { parseDependencies } from "./deps.js";
 import {
   getRepoInfo,
@@ -75,20 +75,20 @@ async function parseJsonBody<T>(req: IncomingMessage): Promise<T | null> {
 
 /**
  * Authenticate an API request using Telegram initData.
- * Returns true if authenticated, false if 401 was sent.
+ * Returns the validated TelegramUser on success, or null if 401 was sent.
  */
-function requireAuth(req: IncomingMessage, res: ServerResponse): boolean {
+function requireAuth(req: IncomingMessage, res: ServerResponse): TelegramUser | null {
   const initData = req.headers["x-telegram-init-data"];
   if (typeof initData !== "string" || !initData) {
     json(res, 401, { error: "Missing x-telegram-init-data header" });
-    return false;
+    return null;
   }
   const user = validateInitData(initData);
   if (!user) {
     json(res, 401, { error: "Invalid or expired authentication" });
-    return false;
+    return null;
   }
-  return true;
+  return user;
 }
 
 /**
@@ -315,7 +315,8 @@ async function handleStartIssue(
   req: IncomingMessage,
   res: ServerResponse,
   projectName: string,
-  issueNumber: string
+  issueNumber: string,
+  authedUser: TelegramUser
 ): Promise<void> {
   const projectPath = await resolveProject(projectName);
   if (!projectPath) {
@@ -330,15 +331,11 @@ async function handleStartIssue(
     // Best-effort pull — continue even if it fails
   }
 
-  // Parse optional body for baseBranch and chatId
-  const body = await parseJsonBody<{ baseBranch?: string; chatId?: number }>(req);
+  // Parse optional body for baseBranch
+  const body = await parseJsonBody<{ baseBranch?: string }>(req);
   const baseBranch = body?.baseBranch;
-  // chatId is required to know where to send Telegram notifications
-  const chatId = body?.chatId;
-  if (!chatId) {
-    json(res, 400, { error: "chatId is required in request body" });
-    return;
-  }
+  // Use authenticated user's ID as chatId (private chat ID === user ID in Telegram)
+  const chatId = authedUser.id;
 
   // Check for existing session
   const sessionKey = `oh-task-${projectName}-${issueNumber}`;
@@ -483,7 +480,8 @@ export async function routeApi(
   if (!pathname.startsWith("/api/")) return false;
 
   // All /api/* routes require Telegram initData authentication
-  if (!requireAuth(req, res)) return true;
+  const authedUser = requireAuth(req, res);
+  if (!authedUser) return true;
 
   // --- Existing routes ---
 
@@ -523,7 +521,7 @@ export async function routeApi(
   // POST /api/projects/:name/issues/:num/start
   const startMatch = pathname.match(/^\/api\/projects\/([^/]+)\/issues\/(\d+)\/start$/);
   if (startMatch && method === "POST") {
-    await handleStartIssue(req, res, decodeURIComponent(startMatch[1]), startMatch[2]);
+    await handleStartIssue(req, res, decodeURIComponent(startMatch[1]), startMatch[2], authedUser);
     return true;
   }
 

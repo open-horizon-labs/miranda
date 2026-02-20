@@ -36,6 +36,8 @@ export const config = {
   ompCliPath: process.env.OMP_CLI_PATH ?? "",
   githubToken: process.env.GITHUB_TOKEN ?? "",
   port: parseInt(process.env.MIRANDA_PORT ?? "3847", 10),
+  /** HTTPS URL for Telegram Mini App (e.g. https://myhost.ts.net:3847/). If set, bot sets menu button. */
+  webappUrl: process.env.MIRANDA_WEBAPP_URL ?? "",
 } as const;
 
 export function validateConfig(): void {
