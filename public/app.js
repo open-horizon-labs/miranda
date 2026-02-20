@@ -45,6 +45,10 @@
 
   var REFRESH_INTERVAL = 10000; // 10 seconds
 
+  // Log panel state: { taskId: { es: EventSource, panel: Element, autoScroll: bool } }
+  var logStreams = {};
+  var MAX_LOG_LINES = 200;
+
   // ---------------------------------------------------------------------------
   // DOM refs
   // ---------------------------------------------------------------------------
@@ -148,20 +152,29 @@
   // ---------------------------------------------------------------------------
 
   function renderSessions() {
+    // Close log streams for sessions that no longer exist
+    var currentTaskIds = {};
+    for (var si = 0; si < sessions.length; si++) {
+      currentTaskIds[sessions[si].taskId] = true;
+    }
+    for (var tid in logStreams) {
+      if (!currentTaskIds[tid]) {
+        closeLogStream(tid);
+      }
+    }
     if (sessions.length === 0) {
       $sessionsList.innerHTML = '<div class="empty-state">No active sessions</div>';
       $sessionsCount.style.display = "none";
       return;
     }
-
     $sessionsCount.textContent = sessions.length;
     $sessionsCount.style.display = "";
-
     var html = "";
     for (var i = 0; i < sessions.length; i++) {
       var s = sessions[i];
       var statusLabel = s.status.replace("_", " ");
-      html += '<div class="session-card">';
+      var isLogOpen = !!logStreams[s.taskId];
+      html += '<div class="session-card" data-session-task="' + escAttr(s.taskId) + '">';
       html += '<div class="session-top">';
       html += '<div class="session-info">';
       html += '<div class="session-task">' + esc(s.taskId) + "</div>";
@@ -171,11 +184,16 @@
       html += "<span>" + esc(s.skill) + "</span>";
       html += "<span>" + esc(s.elapsed) + "</span>";
       html += "</div></div>";
+      html += '<div class="session-card-actions">';
+      html +=
+        '<button class="log-toggle' + (isLogOpen ? ' active' : '') + '" data-task="' +
+        escAttr(s.taskId) +
+        '">Logs</button>';
       html +=
         '<button class="btn btn-danger btn-stop" data-task="' +
         escAttr(s.taskId) +
         '">Stop</button>';
-      html += "</div>";
+      html += "</div></div>";
       if (s.pendingQuestion) {
         var q = s.pendingQuestion.questions;
         for (var j = 0; j < q.length; j++) {
@@ -183,14 +201,28 @@
             '<div class="session-question">' + esc(q[j]) + "</div>";
         }
       }
+      // Placeholder for log panel (re-attached below if open)
+      html += '<div class="log-panel-slot" data-log-slot="' + escAttr(s.taskId) + '"></div>';
       html += "</div>";
     }
     $sessionsList.innerHTML = html;
-
-    // Attach stop handlers
     var stopBtns = $sessionsList.querySelectorAll(".btn-stop");
     for (var k = 0; k < stopBtns.length; k++) {
       stopBtns[k].addEventListener("click", handleStopClick);
+    }
+
+    // Attach log toggle handlers
+    var logBtns = $sessionsList.querySelectorAll(".log-toggle");
+    for (var l = 0; l < logBtns.length; l++) {
+      logBtns[l].addEventListener("click", handleLogToggle);
+    }
+
+    // Re-attach existing log panels
+    for (var taskId in logStreams) {
+      var slot = $sessionsList.querySelector('[data-log-slot="' + escAttr(taskId) + '"]');
+      if (slot && logStreams[taskId].panel) {
+        slot.appendChild(logStreams[taskId].panel);
+      }
     }
   }
 
@@ -206,6 +238,121 @@
       .catch(function (err) {
         showToast(err.message, "error");
       });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Log Panel
+  // ---------------------------------------------------------------------------
+
+  function handleLogToggle(e) {
+    var taskId = e.currentTarget.getAttribute("data-task");
+    if (!taskId) return;
+    if (logStreams[taskId]) {
+      closeLogStream(taskId);
+      renderSessions();
+    } else {
+      openLogStream(taskId);
+      renderSessions();
+    }
+  }
+
+  function openLogStream(taskId) {
+    if (logStreams[taskId]) return;
+
+    var panel = document.createElement("div");
+    panel.className = "log-panel";
+
+    var initData = getInitData();
+    var url = "/api/sessions/" + encodeURIComponent(taskId) + "/logs?initData=" + encodeURIComponent(initData);
+    var es = new EventSource(url);
+    var state = { es: es, panel: panel, autoScroll: true };
+    logStreams[taskId] = state;
+    panel.addEventListener("scroll", function () {
+      // If user scrolled up from bottom, pause auto-scroll
+      var atBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 30;
+      state.autoScroll = atBottom;
+    });
+
+
+    es.onmessage = function (evt) {
+      try {
+        var event = JSON.parse(evt.data);
+        appendLogLine(panel, state, event);
+      } catch (err) {
+        // Ignore parse errors
+      }
+    };
+
+    es.onerror = function () {
+      // EventSource auto-reconnects; on permanent close, clean up
+      if (es.readyState === EventSource.CLOSED) {
+        closeLogStream(taskId);
+      }
+    };
+  }
+
+  function closeLogStream(taskId) {
+    var stream = logStreams[taskId];
+    if (!stream) return;
+    stream.es.close();
+    if (stream.panel.parentNode) {
+      stream.panel.parentNode.removeChild(stream.panel);
+    }
+    delete logStreams[taskId];
+  }
+
+  function appendLogLine(panel, state, event) {
+    var line = document.createElement("div");
+    line.className = "log-line";
+
+    var timeSpan = document.createElement("span");
+    timeSpan.className = "log-time";
+    timeSpan.textContent = event.time || "";
+    line.appendChild(timeSpan);
+
+    var contentSpan = document.createElement("span");
+
+    switch (event.type) {
+      case "tool_start":
+        contentSpan.className = "log-tool";
+        contentSpan.textContent = "\u25B6 " + (event.tool || "tool");
+        break;
+      case "tool_end":
+        contentSpan.className = "log-tool";
+        contentSpan.textContent = "\u2713 " + (event.tool || "tool");
+        break;
+      case "text":
+        contentSpan.className = "log-text";
+        contentSpan.textContent = event.content || "";
+        break;
+      case "question":
+        contentSpan.className = "log-question";
+        contentSpan.textContent = "\u23F8 Waiting: " + (event.content || "");
+        break;
+      case "complete":
+        contentSpan.className = "log-complete";
+        contentSpan.textContent = "\u2713 Session complete";
+        break;
+      case "error":
+        contentSpan.className = "log-error";
+        contentSpan.textContent = "\u2717 " + (event.content || "Error");
+        break;
+      default:
+        contentSpan.textContent = event.type + ": " + (event.content || "");
+    }
+
+    line.appendChild(contentSpan);
+    panel.appendChild(line);
+
+    // Trim old lines
+    while (panel.children.length > MAX_LOG_LINES) {
+      panel.removeChild(panel.firstChild);
+    }
+
+    // Auto-scroll
+    if (state.autoScroll) {
+      panel.scrollTop = panel.scrollHeight;
+    }
   }
 
   // ---------------------------------------------------------------------------
