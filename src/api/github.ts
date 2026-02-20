@@ -233,6 +233,20 @@ export async function getOpenPRs(
     page++;
   }
 
+  // List endpoint returns mergeable: null — hydrate from individual PR fetches
+  await Promise.all(
+    prs.map(async (pr) => {
+      try {
+        const detail = await githubFetch<{ mergeable: boolean | null }>(
+          `/repos/${owner}/${repo}/pulls/${pr.number}`
+        );
+        pr.mergeable = detail.mergeable;
+      } catch {
+        // Best-effort — leave as null
+      }
+    })
+  );
+
   return prs;
 }
 
