@@ -16,6 +16,7 @@ import {
   getRestartChatId,
   clearRestartChatId,
 } from "./state/sessions.js";
+import { startApiServer, stopApiServer } from "./api/server.js";
 
 // Validate configuration
 validateConfig();
@@ -38,6 +39,7 @@ export async function gracefulShutdown(): Promise<void> {
     // Stop bot polling first (prevents new commands)
     await bot.stop();
     console.log("   Bot stopped");
+    await stopApiServer();
 
     // Kill all agent processes
     const agents = getAllAgents();
@@ -270,6 +272,9 @@ bot.start({
     }
 
     console.log("Miranda is ready");
+
+    // Start API server
+    startApiServer();
   },
 }).catch((err) => {
   console.error("Failed to start:", err);
