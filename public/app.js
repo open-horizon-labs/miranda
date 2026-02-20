@@ -315,7 +315,7 @@
     switch (event.type) {
       case "tool_start":
         contentSpan.className = "log-tool";
-        contentSpan.textContent = "\u25B6 " + (event.tool || "tool");
+        contentSpan.textContent = "\u25B6 " + (event.tool || "tool") + (event.content ? " \u2014 " + event.content : "");
         break;
       case "tool_end":
         contentSpan.className = "log-tool";

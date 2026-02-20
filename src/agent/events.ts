@@ -464,6 +464,51 @@ function logTimeNow(): string {
 }
 
 /**
+ * Extract a short human-readable summary from tool input data.
+ */
+function summarizeToolInput(tool: string | undefined, data: unknown): string | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const d = data as Record<string, unknown>;
+  const MAX = 120;
+  const trunc = (s: string) => s.length > MAX ? s.slice(0, MAX) + "\u2026" : s;
+
+  switch (tool) {
+    case "Bash":
+    case "bash":
+      return typeof d.command === "string" ? trunc(d.command) : undefined;
+    case "Read":
+    case "read":
+      return typeof d.path === "string" ? d.path : undefined;
+    case "Write":
+    case "write":
+      return typeof d.path === "string" ? d.path : undefined;
+    case "Edit":
+    case "edit":
+      return typeof d.path === "string" ? d.path : undefined;
+    case "Grep":
+    case "grep":
+      return typeof d.pattern === "string" ? trunc(d.pattern) : undefined;
+    case "Find":
+    case "find":
+      return typeof d.pattern === "string" ? trunc(d.pattern) : undefined;
+    case "WebSearch":
+    case "web_search":
+      return typeof d.query === "string" ? trunc(d.query) : undefined;
+    case "WebFetch":
+    case "web_fetch":
+      return typeof d.url === "string" ? trunc(d.url) : undefined;
+    case "Task":
+    case "task": {
+      const tasks = d.tasks;
+      if (Array.isArray(tasks)) return tasks.length + " subtask(s)";
+      return undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Map RPC events to LogEvent and emit to SSE subscribers.
  * Skips thinking_delta, toolcall_delta, and other noisy/irrelevant events.
  */
@@ -471,9 +516,12 @@ function emitLogEventForRpc(sessionId: string, event: RpcEvent): void {
   const time = logTimeNow();
 
   switch (event.type) {
-    case "tool_execution_start":
-      emitLogEvent(sessionId, { type: "tool_start", tool: (event as RpcToolEvent).toolName, time });
+    case "tool_execution_start": {
+      const te = event as RpcToolEvent;
+      const detail = summarizeToolInput(te.toolName, te.data);
+      emitLogEvent(sessionId, { type: "tool_start", tool: te.toolName, content: detail, time });
       break;
+    }
 
     case "tool_execution_end":
       emitLogEvent(sessionId, { type: "tool_end", tool: (event as RpcToolEvent).toolName, time });
