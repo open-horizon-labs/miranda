@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getAllSessions, getSession, deleteSession, setSession } from "../state/sessions.js";
-import { scanProjects, pullProject } from "../projects/scanner.js";
+import { scanProjects, pullProject, selfUpdate } from "../projects/scanner.js";
 import { stopSession, spawnSession, type SpawnOptions } from "../bot/commands.js";
 import { validateInitData, type TelegramUser } from "./auth.js";
 import { parseDependencies } from "./deps.js";
@@ -15,6 +15,17 @@ import {
   type GitHubPR,
 } from "./github.js";
 import type { Session } from "../types.js";
+
+/** Shutdown function for /api/restart. Set by setApiShutdownFn(). */
+let shutdownFn: (() => Promise<void>) | null = null;
+
+/**
+ * Register the graceful shutdown function for the restart API endpoint.
+ * Called once during startup from index.ts.
+ */
+export function setApiShutdownFn(fn: () => Promise<void>): void {
+  shutdownFn = fn;
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -458,6 +469,55 @@ async function handleCommentPR(
   }
 }
 
+/**
+ * POST /api/selfupdate — Pull latest code and rebuild Miranda.
+ */
+async function handleSelfUpdate(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const result = await selfUpdate();
+
+    if (!result.success) {
+      json(res, 500, {
+        error: result.error || "Self-update failed",
+        commits: 0,
+        commitMessages: [],
+        alreadyCurrent: false,
+      });
+      return;
+    }
+
+    json(res, 200, {
+      commits: result.commits,
+      commitMessages: result.commitMessages,
+      alreadyCurrent: result.commits === 0,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
+ * POST /api/restart — Graceful shutdown (process manager restarts).
+ * Sends response first, then shuts down after a short delay.
+ */
+function handleRestart(_req: IncomingMessage, res: ServerResponse): void {
+  if (!shutdownFn) {
+    json(res, 503, { error: "Shutdown function not configured" });
+    return;
+  }
+
+  // Send the response before shutting down
+  json(res, 200, { ok: true });
+
+  // Delay shutdown so the response reaches the client
+  setTimeout(() => {
+    shutdownFn!().catch((err) => {
+      console.error("Shutdown error:", err);
+      process.exit(1);
+    });
+  }, 500);
+}
 
 /**
  * Route an API request to the appropriate handler.
@@ -537,6 +597,20 @@ export async function routeApi(
   const commentMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/comment$/);
   if (commentMatch && method === "POST") {
     await handleCommentPR(req, res, decodeURIComponent(commentMatch[1]), commentMatch[2]);
+    return true;
+  }
+
+  // --- Admin routes ---
+
+  // POST /api/selfupdate
+  if (pathname === "/api/selfupdate" && method === "POST") {
+    await handleSelfUpdate(req, res);
+    return true;
+  }
+
+  // POST /api/restart
+  if (pathname === "/api/restart" && method === "POST") {
+    handleRestart(req, res);
     return true;
   }
 

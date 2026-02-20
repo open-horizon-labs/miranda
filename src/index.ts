@@ -17,6 +17,7 @@ import {
   clearRestartChatId,
 } from "./state/sessions.js";
 import { startApiServer, stopApiServer } from "./api/server.js";
+import { setApiShutdownFn } from "./api/routes.js";
 
 // Validate configuration
 validateConfig();
@@ -69,6 +70,9 @@ bot.use(async (ctx, next) => {
 
 // Register command handlers (pass shutdown function for /restart)
 registerCommands(bot, gracefulShutdown);
+
+// Register shutdown function for API /restart endpoint
+setApiShutdownFn(gracefulShutdown);
 
 // Callback query handler for inline keyboards
 bot.on("callback_query:data", async (ctx) => {

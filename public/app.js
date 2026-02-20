@@ -61,6 +61,12 @@
   var $commentText = document.getElementById("comment-text");
   var $commentCancel = document.getElementById("comment-cancel");
   var $commentSubmit = document.getElementById("comment-submit");
+  var $adminStatus = document.getElementById("admin-status");
+  var $updateBtn = document.getElementById("update-btn");
+  var $restartBtn = document.getElementById("restart-btn");
+  var $updateRestartBtn = document.getElementById("update-restart-btn");
+
+  var adminBusy = false; // prevents concurrent admin operations
 
   // ---------------------------------------------------------------------------
   // API layer
@@ -610,6 +616,154 @@
     if (e.target === $commentModal) {
       closeCommentModal();
     }
+  });
+
+  // --- Admin button handlers ---
+
+  function setAdminBusy(busy) {
+    adminBusy = busy;
+    $updateBtn.disabled = busy;
+    $restartBtn.disabled = busy;
+    $updateRestartBtn.disabled = busy;
+  }
+
+  function setAdminStatus(html) {
+    $adminStatus.innerHTML = html;
+  }
+
+  function doSelfUpdate() {
+    if (adminBusy) return Promise.resolve();
+    setAdminBusy(true);
+    $updateBtn.textContent = "Updating\u2026";
+    $updateBtn.classList.add("updating");
+    setAdminStatus('<span class="status-info">Pulling and building\u2026</span>');
+
+    return api("POST", "/api/selfupdate")
+      .then(function (data) {
+        $updateBtn.textContent = "Update";
+        $updateBtn.classList.remove("updating");
+        if (data.alreadyCurrent) {
+          setAdminStatus('<span class="status-success">Already up to date</span>');
+          showToast("Already up to date", "info");
+          setAdminBusy(false);
+          return false; // no updates
+        }
+        var html = '<span class="status-success">' + esc(data.commits + " commit(s) pulled") + '</span>';
+        if (data.commitMessages && data.commitMessages.length > 0) {
+          html += '<ul class="update-commits">';
+          for (var i = 0; i < data.commitMessages.length; i++) {
+            html += "<li>" + esc(data.commitMessages[i]) + "</li>";
+          }
+          html += "</ul>";
+        }
+        setAdminStatus(html);
+        showToast(data.commits + " commit(s) pulled. Restart to apply.", "success");
+        setAdminBusy(false);
+        return true; // had updates
+      })
+      .catch(function (err) {
+        $updateBtn.textContent = "Update";
+        $updateBtn.classList.remove("updating");
+        setAdminStatus('<span class="status-error">Update failed: ' + esc(err.message) + '</span>');
+        showToast("Update failed: " + err.message, "error");
+        setAdminBusy(false);
+        return false;
+      });
+  }
+
+  function doRestart() {
+    if (adminBusy) return;
+    setAdminBusy(true);
+    $restartBtn.textContent = "Restarting\u2026";
+    $restartBtn.classList.add("restarting");
+    setAdminStatus('<span class="status-info">Restarting Miranda\u2026</span>');
+
+    // Stop auto-refresh during restart
+    stopAutoRefresh();
+
+    api("POST", "/api/restart")
+      .catch(function () {
+        // Expected — server shuts down, fetch may fail
+      })
+      .then(function () {
+        // Poll for reconnection
+        return pollReconnect();
+      })
+      .then(function () {
+        $restartBtn.textContent = "Restart";
+        $restartBtn.classList.remove("restarting");
+        setAdminStatus('<span class="status-success">Back online</span>');
+        showToast("Miranda is back online", "success");
+        setAdminBusy(false);
+        refreshAll();
+        startAutoRefresh();
+      })
+      .catch(function (err) {
+        $restartBtn.textContent = "Restart";
+        $restartBtn.classList.remove("restarting");
+        setAdminStatus('<span class="status-error">' + esc(err.message) + '</span>');
+        showToast(err.message, "error");
+        setAdminBusy(false);
+        startAutoRefresh();
+      });
+  }
+
+  function pollReconnect() {
+    var POLL_INTERVAL = 2000; // 2 seconds
+    var TIMEOUT = 30000; // 30 seconds
+    var startTime = Date.now();
+
+    return new Promise(function (resolve, reject) {
+      function check() {
+        if (Date.now() - startTime > TIMEOUT) {
+          reject(new Error("Miranda did not come back within 30s"));
+          return;
+        }
+        setAdminStatus('<span class="status-info">Reconnecting\u2026</span>');
+        fetch("/api/sessions", {
+          headers: { "x-telegram-init-data": getInitData() },
+        })
+          .then(function (res) {
+            if (res.ok) {
+              resolve();
+            } else {
+              setTimeout(check, POLL_INTERVAL);
+            }
+          })
+          .catch(function () {
+            setTimeout(check, POLL_INTERVAL);
+          });
+      }
+      // Wait a bit before first check — server needs time to shut down
+      setTimeout(check, POLL_INTERVAL);
+    });
+  }
+
+  $updateBtn.addEventListener("click", function () {
+    doSelfUpdate();
+  });
+
+  $restartBtn.addEventListener("click", function () {
+    var sessionCount = sessions.length;
+    var msg = "Restart Miranda?";
+    if (sessionCount > 0) {
+      msg += "\n\n" + sessionCount + " active session(s) will be terminated.";
+    }
+    if (!confirm(msg)) return;
+    doRestart();
+  });
+
+  $updateRestartBtn.addEventListener("click", function () {
+    var sessionCount = sessions.length;
+    var msg = "Update and restart Miranda?";
+    if (sessionCount > 0) {
+      msg += "\n\n" + sessionCount + " active session(s) will be terminated.";
+    }
+    if (!confirm(msg)) return;
+    doSelfUpdate().then(function (hadUpdates) {
+      // Restart regardless — user explicitly asked for update & restart
+      doRestart();
+    });
   });
 
   // ---------------------------------------------------------------------------
