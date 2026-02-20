@@ -276,9 +276,6 @@
       titleSpan.target = "_blank";
       titleSpan.rel = "noopener";
     }
-    var titleSpan = document.createElement("span");
-    titleSpan.className = "issue-title";
-    titleSpan.textContent = issue.title;
     header.appendChild(numSpan);
     header.appendChild(titleSpan);
     card.appendChild(header);
