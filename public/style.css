@@ -213,6 +213,13 @@ html, body {
   justify-content: space-between;
 }
 
+.session-card-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .session-info {
   display: flex;
   flex-direction: column;
@@ -622,4 +629,74 @@ a.pr-status:active {
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
+}
+
+/* --- Log Panel --- */
+
+.log-panel {
+  background: #111113;
+  border-radius: var(--radius-sm);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 8px;
+}
+
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-line .log-time {
+  color: var(--tg-theme-hint-color);
+  margin-right: 6px;
+  user-select: none;
+}
+
+.log-tool {
+  color: #64d2ff;
+  font-weight: 600;
+}
+
+.log-error {
+  color: #ff453a;
+}
+
+.log-question {
+  color: #ffd60a;
+  background: rgba(255, 214, 10, 0.08);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.log-complete {
+  color: #30d158;
+  font-weight: 600;
+}
+
+.log-text {
+  color: var(--tg-theme-text-color);
+}
+
+.log-toggle {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--tg-theme-hint-color);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.log-toggle:active {
+  opacity: 0.7;
+}
+
+.log-toggle.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--tg-theme-text-color);
 }

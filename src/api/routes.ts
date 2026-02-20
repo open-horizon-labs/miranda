@@ -17,6 +17,7 @@ import {
   type PREnrichment,
 } from "./github.js";
 import type { Session } from "../types.js";
+import { subscribe, unsubscribe } from "./logs.js";
 
 /** Shutdown function for /api/restart. Set by setApiShutdownFn(). */
 let shutdownFn: (() => Promise<void>) | null = null;
@@ -588,6 +589,53 @@ function handleRestart(_req: IncomingMessage, res: ServerResponse): void {
 
 
 /**
+ * GET /api/sessions/:id/logs — SSE stream of live log events.
+ * Auth via query param: ?initData=...
+ * EventSource doesn't support custom headers, so we accept initData as query param.
+ */
+function handleSessionLogs(
+  req: IncomingMessage,
+  res: ServerResponse,
+  taskId: string
+): void {
+  // Auth: read initData from query param (EventSource can't set headers)
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const initData = url.searchParams.get("initData") ?? "";
+  if (!initData) {
+    json(res, 401, { error: "Missing initData query parameter" });
+    return;
+  }
+  const user = validateInitData(initData);
+  if (!user) {
+    json(res, 401, { error: "Invalid or expired authentication" });
+    return;
+  }
+
+  // Verify session exists
+  const session = getSession(taskId);
+  if (!session) {
+    json(res, 404, { error: "Session not found" });
+    return;
+  }
+
+  // Set up SSE response
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    ...CORS_HEADERS,
+  });
+
+  // Subscribe to live events (sends backfill immediately)
+  subscribe(session.sessionId, res);
+
+  // Unsubscribe on disconnect
+  req.on("close", () => {
+    unsubscribe(session.sessionId, res);
+  });
+}
+
+/**
  * Route an API request to the appropriate handler.
  * Returns true if a route matched, false otherwise.
  */
@@ -607,6 +655,14 @@ export async function routeApi(
 
   // Only handle /api/* routes
   if (!pathname.startsWith("/api/")) return false;
+
+  // SSE log stream — uses query param auth, handled before standard auth check
+  const logsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/logs$/);
+  if (logsMatch && method === "GET") {
+    handleSessionLogs(req, res, decodeURIComponent(logsMatch[1]));
+    return true;
+  }
+
 
   // All /api/* routes require Telegram initData authentication
   const authedUser = requireAuth(req, res);

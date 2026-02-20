@@ -10,9 +10,11 @@ import type {
   RpcEvent,
   RpcExtensionUIRequest,
   RpcToolEvent,
+  RpcMessageEvent,
   AgentProcess,
 } from "./process.js";
 import type { Question } from "../types.js";
+import { emitLogEvent, closeSession as closeLogSession } from "../api/logs.js";
 
 // Bot reference for sending Telegram messages
 // Set during startup by calling setBot()
@@ -32,6 +34,9 @@ export function setBot(bot: Bot): void {
  */
 export function handleAgentEvent(agent: AgentProcess, event: RpcEvent): void {
   const sessionId = agent.sessionId;
+
+  // Fan-out to SSE log subscribers
+  emitLogEventForRpc(sessionId, event);
 
   switch (event.type) {
     case "extension_ui_request":
@@ -99,6 +104,7 @@ export function handleAgentExit(sessionId: string, code: number | null, signal: 
 
     // Clean up session
     deleteSession(session.taskId);
+    closeLogSession(sessionId);
   }
 }
 
@@ -180,6 +186,7 @@ function handleAgentEnd(sessionId: string): void {
 
   // Clean up session
   deleteSession(session.taskId);
+  closeLogSession(sessionId);
 }
 
 // ============================================================================
@@ -436,4 +443,67 @@ function handleToolExecutionEnd(sessionId: string, event: RpcToolEvent): void {
   // Note: We don't delete the session here - the agent_end event will handle cleanup.
   // This allows the agent to continue (e.g., cleanup worktrees) after signaling.
   console.log(`[agent:${sessionId}] signal_completion: status=${status}${pr ? ` pr=${pr}` : ""}${error ? ` error=${error}` : ""}${blocker ? ` blocker=${blocker}` : ""}`);
+}
+
+// ============================================================================
+// SSE Log Event Fan-out
+// ============================================================================
+
+/**
+ * Format current time as HH:MM:SS for log events.
+ */
+function logTimeNow(): string {
+  const d = new Date();
+  return (
+    String(d.getHours()).padStart(2, "0") +
+    ":" +
+    String(d.getMinutes()).padStart(2, "0") +
+    ":" +
+    String(d.getSeconds()).padStart(2, "0")
+  );
+}
+
+/**
+ * Map RPC events to LogEvent and emit to SSE subscribers.
+ * Skips thinking_delta, toolcall_delta, and other noisy/irrelevant events.
+ */
+function emitLogEventForRpc(sessionId: string, event: RpcEvent): void {
+  const time = logTimeNow();
+
+  switch (event.type) {
+    case "tool_execution_start":
+      emitLogEvent(sessionId, { type: "tool_start", tool: (event as RpcToolEvent).toolName, time });
+      break;
+
+    case "tool_execution_end":
+      emitLogEvent(sessionId, { type: "tool_end", tool: (event as RpcToolEvent).toolName, time });
+      break;
+
+    case "message_update": {
+      const msg = event as RpcMessageEvent;
+      if (msg.delta?.type === "text_delta" && msg.delta.content) {
+        emitLogEvent(sessionId, { type: "text", content: msg.delta.content, time });
+      }
+      // Skip thinking_delta, toolcall_delta
+      break;
+    }
+
+    case "extension_ui_request": {
+      const ui = event as RpcExtensionUIRequest;
+      emitLogEvent(sessionId, { type: "question", content: ui.title ?? ui.placeholder ?? "Input required", time });
+      break;
+    }
+
+    case "agent_end":
+      emitLogEvent(sessionId, { type: "complete", time });
+      break;
+
+    case "extension_error":
+      emitLogEvent(sessionId, { type: "error", content: (event as { error: string }).error, time });
+      break;
+
+    // Skip: response, agent_start, turn_start/end, message_start/end, tool_execution_update
+    default:
+      break;
+  }
 }
