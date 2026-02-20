@@ -275,6 +275,21 @@ bot.start({
 
     // Start API server
     startApiServer();
+
+    // Set Mini App menu button if webapp URL is configured
+    if (config.webappUrl) {
+      bot.api.setChatMenuButton({
+        menu_button: {
+          type: "web_app",
+          text: "Control Center",
+          web_app: { url: config.webappUrl },
+        },
+      }).then(() => {
+        console.log(`   Mini App: ${config.webappUrl}`);
+      }).catch((err) => {
+        console.warn("Failed to set menu button:", err.message ?? err);
+      });
+    }
   },
 }).catch((err) => {
   console.error("Failed to start:", err);

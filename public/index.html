@@ -2,11 +2,63 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Miranda Control Center</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Miranda Control Center</h1>
-  <p>Mini App coming soon.</p>
+
+<div class="loading-bar" id="loading-bar"></div>
+
+<header class="header">
+  <h1>Miranda</h1>
+  <div class="header-actions">
+    <button class="btn-icon" id="refresh-btn" title="Refresh">&#x21bb;</button>
+  </div>
+</header>
+
+<div class="project-selector">
+  <select id="project-select">
+    <option value="">Select project&hellip;</option>
+  </select>
+</div>
+
+<section class="section" id="sessions-section">
+  <div class="section-header">
+    <span class="section-title">Active Sessions</span>
+    <span class="section-badge" id="sessions-count" style="display:none">0</span>
+  </div>
+  <div class="card-list" id="sessions-list">
+    <div class="empty-state">No active sessions</div>
+  </div>
+</section>
+
+<section class="section" id="issues-section" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Issues &amp; PRs</span>
+    <span class="section-badge" id="issues-count" style="display:none">0</span>
+  </div>
+  <div id="issues-tree">
+    <div class="empty-state">Select a project to view issues</div>
+  </div>
+</section>
+
+<!-- Comment Modal -->
+<div class="modal-overlay" id="comment-modal">
+  <div class="modal-content">
+    <div class="modal-title">Comment on PR #<span id="comment-pr-num"></span></div>
+    <textarea id="comment-text" placeholder="Write your comment&hellip;"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="comment-cancel">Cancel</button>
+      <button class="btn btn-primary" id="comment-submit">Post</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
 </body>
 </html>
