@@ -17,10 +17,6 @@
     return (webapp && webapp.initData) || "";
   }
 
-  function getChatId() {
-    // In private chats chatId === userId
-    return (webapp && webapp.initDataUnsafe && webapp.initDataUnsafe.user && webapp.initDataUnsafe.user.id) || 0;
-  }
 
   // ---------------------------------------------------------------------------
   // State
@@ -382,9 +378,7 @@
     if (!issueNum || !selectedProject) return;
     var btn = e.currentTarget;
     btn.disabled = true;
-    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/issues/" + issueNum + "/start", {
-      chatId: getChatId(),
-    })
+    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/issues/" + issueNum + "/start")
       .then(function () {
         showToast("Issue #" + issueNum + " started", "success");
         return loadSessions();
