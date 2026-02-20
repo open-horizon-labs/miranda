@@ -611,6 +611,14 @@
         html += '<span class="btn btn-merge-disabled">Checking\u2026</span>';
       }
       html += '<button class="btn btn-secondary" data-pr="' + pr.number + '" data-action="comment">Comment</button>';
+      // Notes button (oh-notes)
+      var notesSessionId = selectedProject ? "oh-notes-" + selectedProject + "-" + pr.number : null;
+      var notesActive = notesSessionId && sessions.some(function (s) { return s.taskId === notesSessionId; });
+      if (notesActive) {
+        html += '<span class="btn btn-in-progress">Notes\u2026</span>';
+      } else {
+        html += '<button class="btn btn-notes" data-pr="' + pr.number + '" data-action="notes">Notes</button>';
+      }
       html += '</div>';
       html += '</div>';
     }
