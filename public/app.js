@@ -885,6 +885,7 @@
     }).catch(function () {
       // Scheduler endpoint may not exist on older versions
       schedulerStatus = null;
+      renderScheduler();
     });
   }
 

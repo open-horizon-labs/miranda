@@ -269,7 +269,7 @@ async function pollProject(projectName: string, manual = false): Promise<{
 
   // Check concurrent session limit
   const activeSessions = getAllSessions().filter(
-    (s) => (s.status === "running" || s.status === "waiting_input") && s.skill === "oh-task",
+    (s) => (s.status === "starting" || s.status === "running" || s.status === "waiting_input") && s.skill === "oh-task",
   );
   const availableSlots = config.schedulerMaxConcurrent - activeSessions.length;
 
