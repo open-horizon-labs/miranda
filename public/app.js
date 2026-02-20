@@ -741,6 +741,34 @@
   // Event bindings
   // ---------------------------------------------------------------------------
 
+  // --- Collapsible sections ---
+  (function () {
+    var sections = document.querySelectorAll(".section");
+    for (var i = 0; i < sections.length; i++) {
+      var section = sections[i];
+      var id = section.id;
+      // Restore collapsed state
+      if (id && localStorage.getItem("miranda_collapsed_" + id) === "1") {
+        section.classList.add("collapsed");
+      }
+      var header = section.querySelector(".section-header");
+      if (header) {
+        header.addEventListener("click", (function (sec, secId) {
+          return function () {
+            sec.classList.toggle("collapsed");
+            if (secId) {
+              if (sec.classList.contains("collapsed")) {
+                localStorage.setItem("miranda_collapsed_" + secId, "1");
+              } else {
+                localStorage.removeItem("miranda_collapsed_" + secId);
+              }
+            }
+          };
+        })(section, id));
+      }
+    }
+  })();
+
   $refreshBtn.addEventListener("click", function () {
     $refreshBtn.classList.add("spinning");
     refreshAll()

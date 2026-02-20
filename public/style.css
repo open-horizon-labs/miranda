@@ -190,6 +190,29 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.section-header::before {
+  content: "\25BE";
+  font-size: 12px;
+  margin-right: 6px;
+  color: var(--tg-theme-hint-color);
+  transition: transform 0.2s;
+}
+
+.section.collapsed .section-header::before {
+  transform: rotate(-90deg);
+}
+
+.section-body {
+  transition: none;
+}
+
+.section.collapsed .section-body {
+  display: none;
 }
 
 .section-title {
