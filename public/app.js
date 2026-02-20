@@ -119,6 +119,10 @@
           } catch (e) {
             throw new Error("HTTP " + res.status + " (invalid response)");
           }
+          if (res.status === 401) {
+            showAuthExpired();
+            throw new Error("Session expired");
+          }
           if (!res.ok) {
             throw new Error(data.error || "HTTP " + res.status);
           }
@@ -131,6 +135,26 @@
   // ---------------------------------------------------------------------------
   // Toast notifications
   // ---------------------------------------------------------------------------
+
+  var authExpiredShown = false;
+  function showAuthExpired() {
+    if (authExpiredShown) return;
+    authExpiredShown = true;
+    var overlay = document.createElement("div");
+    overlay.className = "auth-expired-overlay";
+    overlay.innerHTML = '<div class="auth-expired-box">' +
+      '<p>Session expired</p>' +
+      '<button class="btn btn-primary" id="auth-reload-btn">Reload</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    document.getElementById("auth-reload-btn").addEventListener("click", function () {
+      if (window.Telegram && Telegram.WebApp) {
+        Telegram.WebApp.close();
+      } else {
+        location.reload();
+      }
+    });
+  }
 
   var toastTimeout = null;
 

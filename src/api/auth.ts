@@ -18,7 +18,7 @@ export interface TelegramUser {
  * 2. Extract hash, sort remaining fields alphabetically
  * 3. HMAC-SHA-256: secret = HMAC("WebAppData", BOT_TOKEN), then HMAC(secret, check_string)
  * 4. Compare computed hash with received hash (timing-safe)
- * 5. Check auth_date freshness (1 hour window)
+ * 5. Check auth_date freshness (24 hour window)
  * 6. Extract user.id, verify against ALLOWED_USER_IDS
  *
  * Returns the validated TelegramUser or null if validation fails.
@@ -58,10 +58,10 @@ export function validateInitData(initData: string): TelegramUser | null {
   if (computedBuf.length !== hashBuf.length) return null;
   if (!timingSafeEqual(computedBuf, hashBuf)) return null;
 
-  // Check auth_date freshness (1 hour window)
+  // Check auth_date freshness (24 hour window — initData can't be refreshed without reopening the Mini App)
   const authDate = parseInt(params.get("auth_date") ?? "0", 10);
   const nowSeconds = Math.floor(Date.now() / 1000);
-  if (nowSeconds - authDate > 3600) return null;
+  if (nowSeconds - authDate > 86400) return null;
 
   // Extract and validate user
   const userStr = params.get("user");
