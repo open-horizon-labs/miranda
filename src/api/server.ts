@@ -60,6 +60,7 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, pathname: string
   res.writeHead(200, {
     "Content-Type": contentType,
     "Content-Length": stat.size,
+    "Cache-Control": "no-cache, no-store, must-revalidate",
     "Access-Control-Allow-Origin": "*",
   });
   createReadStream(resolved).pipe(res);
