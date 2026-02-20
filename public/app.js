@@ -34,14 +34,12 @@
   var selectedProject = null; // project name string
   var sessions = [];
   var issues = [];
-  var prs = [];
+  var allPRs = [];
   var repoUrl = null; // GitHub repo URL for constructing issue links
   var refreshTimer = null;
   var pendingRequests = 0;
   var commentPrNum = null; // PR number for comment modal
-  var enrichmentData = {}; // { [prNumber]: { ci, coderabbit } }
-  var enrichmentCacheTime = 0; // timestamp of last enrichment fetch
-  var ENRICHMENT_TTL = 30000; // 30 seconds client-side cache
+  var commentProject = null; // project name for comment modal (cross-project)
 
   var REFRESH_INTERVAL = 10000; // 10 seconds
 
@@ -60,9 +58,9 @@
   var $sessionsList = document.getElementById("sessions-list");
   var $sessionsCount = document.getElementById("sessions-count");
   var $sessionsSection = document.getElementById("sessions-section");
-  var $prsSection = document.getElementById("prs-section");
-  var $prsList = document.getElementById("prs-list");
-  var $prsCount = document.getElementById("prs-count");
+  var $allPrsSection = document.getElementById("all-prs-section");
+  var $allPrsList = document.getElementById("all-prs-list");
+  var $allPrsCount = document.getElementById("all-prs-count");
   var $issuesSection = document.getElementById("issues-section");
   var $issuesTree = document.getElementById("issues-tree");
   var $issuesCount = document.getElementById("issues-count");
@@ -552,7 +550,6 @@
   function renderIssues() {
     if (!selectedProject) {
       $issuesSection.style.display = "none";
-      $prsSection.style.display = "none";
       return;
     }
 
@@ -579,43 +576,33 @@
     $issuesTree.appendChild(ul);
   }
 
-  function renderPRs() {
-    if (!selectedProject) {
-      $prsSection.style.display = "none";
+  function renderAllPRs() {
+    if (allPRs.length === 0) {
+      $allPrsList.innerHTML = '<div class="empty-state">No open PRs</div>';
+      $allPrsCount.style.display = "none";
       return;
     }
 
-    // Collect PRs from issues that have linked PRs
-    var prList = [];
-    for (var i = 0; i < issues.length; i++) {
-      if (issues[i].pr) {
-        prList.push({ issue: issues[i], pr: issues[i].pr });
-      }
-    }
-
-    if (prList.length === 0) {
-      $prsSection.style.display = "none";
-      return;
-    }
-
-    $prsSection.style.display = "";
-    $prsCount.textContent = prList.length;
-    $prsCount.style.display = "";
-
+    $allPrsCount.textContent = allPRs.length;
+    $allPrsCount.style.display = "";
     var html = "";
-    for (var j = 0; j < prList.length; j++) {
-      var pr = prList[j].pr;
-      var issue = prList[j].issue;
-      var enrichment = enrichmentData[pr.number];
-      var ciState = enrichment && enrichment.ci ? enrichment.ci.state : null;
-
+    for (var j = 0; j < allPRs.length; j++) {
+      var pr = allPRs[j];
+      var enrichment = pr.enrichment;
       html += '<div class="pr-card">';
-      // PR title row
+      // PR header: project badge + number + title
       html += '<div class="pr-card-header">';
+      html += '<span class="pr-card-project">' + esc(pr.project) + '</span>';
       html += '<span class="pr-card-number clickable" data-url="' + escAttr(pr.url || '') + '">#' + pr.number + '</span>';
-      html += '<span class="pr-card-issue">#' + issue.number + ' ' + esc(issue.title) + '</span>';
+      html += '<span class="pr-card-title">' + esc(pr.title) + '</span>';
       html += '</div>';
 
+      // Linked issues
+      if (pr.linkedIssues && pr.linkedIssues.length > 0) {
+        html += '<div class="pr-card-linked">';
+        html += pr.linkedIssues.map(function (n) { return '#' + n; }).join(', ');
+        html += '</div>';
+      }
       // Status row: mergeable + CI + CodeRabbit
       html += '<div class="pr-card-status">';
       if (pr.mergeable === true) {
@@ -633,44 +620,43 @@
       }
       html += '</div>';
 
-      // Action buttons
+      // Action buttons with data-project for cross-project ops
       html += '<div class="pr-card-actions">';
       if (pr.mergeable === true) {
-        html += '<button class="btn btn-merge" data-pr="' + pr.number + '">Merge</button>';
+        html += '<button class="btn btn-merge" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '">Merge</button>';
       } else if (pr.mergeable === false) {
         html += '<span class="btn btn-merge-disabled">Conflicts</span>';
       } else {
         html += '<span class="btn btn-merge-disabled">Checking\u2026</span>';
       }
-      html += '<button class="btn btn-secondary" data-pr="' + pr.number + '" data-action="comment">Comment</button>';
+      html += '<button class="btn btn-secondary" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="comment">Comment</button>';
       // Notes button (oh-notes)
-      var notesSessionId = selectedProject ? "oh-notes-" + selectedProject + "-" + pr.number : null;
-      var notesActive = notesSessionId && sessions.some(function (s) { return s.taskId === notesSessionId; });
+      var notesSessionId = "oh-notes-" + pr.project + "-" + pr.number;
+      var notesActive = sessions.some(function (s) { return s.taskId === notesSessionId; });
       if (notesActive) {
         html += '<span class="btn btn-in-progress">Notes\u2026</span>';
       } else {
-        html += '<button class="btn btn-notes" data-pr="' + pr.number + '" data-action="notes">Notes</button>';
+        html += '<button class="btn btn-notes" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="notes">Notes</button>';
       }
       html += '</div>';
       html += '</div>';
     }
 
-    $prsList.innerHTML = html;
-
+    $allPrsList.innerHTML = html;
     // Attach handlers
-    var mergeBtns = $prsList.querySelectorAll(".btn-merge");
+    var mergeBtns = $allPrsList.querySelectorAll(".btn-merge");
     for (var m = 0; m < mergeBtns.length; m++) {
       mergeBtns[m].addEventListener("click", handleMergeClick);
     }
-    var commentBtns = $prsList.querySelectorAll('[data-action="comment"]');
+    var commentBtns = $allPrsList.querySelectorAll('[data-action="comment"]');
     for (var c = 0; c < commentBtns.length; c++) {
       commentBtns[c].addEventListener("click", handleCommentClick);
     }
-    var notesBtns = $prsList.querySelectorAll('[data-action="notes"]');
+    var notesBtns = $allPrsList.querySelectorAll('[data-action="notes"]');
     for (var nb = 0; nb < notesBtns.length; nb++) {
       notesBtns[nb].addEventListener("click", handleNotesClick);
     }
-    var prNumLinks = $prsList.querySelectorAll(".pr-card-number");
+    var prNumLinks = $allPrsList.querySelectorAll(".pr-card-number");
     for (var n = 0; n < prNumLinks.length; n++) {
       prNumLinks[n].addEventListener("click", function () {
         var url = this.getAttribute("data-url");
@@ -701,18 +687,19 @@
 
   function handleMergeClick(e) {
     var prNum = e.currentTarget.getAttribute("data-pr");
-    if (!prNum || !selectedProject) return;
+    var project = e.currentTarget.getAttribute("data-project") || selectedProject;
+    if (!prNum || !project) return;
     if (!confirm("Squash-merge PR #" + prNum + "?")) return;
     var btn = e.currentTarget;
     var originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = "Merging\u2026";
-    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/prs/" + prNum + "/merge")
+    api("POST", "/api/projects/" + encodeURIComponent(project) + "/prs/" + prNum + "/merge")
       .then(function () {
         btn.textContent = "Merged \u2713";
         btn.className = "btn btn-merge-done";
         showToast("PR #" + prNum + " merged", "success");
-        setTimeout(function () { loadProjectData(); }, 1500);
+        setTimeout(function () { loadAllPRs(); }, 1500);
       })
       .catch(function (err) {
         btn.disabled = false;
@@ -723,15 +710,16 @@
 
   function handleNotesClick(e) {
     var prNum = e.currentTarget.getAttribute("data-pr");
-    if (!prNum || !selectedProject) return;
+    var project = e.currentTarget.getAttribute("data-project") || selectedProject;
+    if (!prNum || !project) return;
     if (!confirm("Start oh-notes for PR #" + prNum + "?")) return;
     var btn = e.currentTarget;
     btn.disabled = true;
     btn.textContent = "Starting\u2026";
-    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/prs/" + prNum + "/notes")
+    api("POST", "/api/projects/" + encodeURIComponent(project) + "/prs/" + prNum + "/notes")
       .then(function () {
         showToast("Notes started for PR #" + prNum, "success");
-        return loadSessions().then(function () { renderPRs(); });
+        return loadSessions().then(function () { renderAllPRs(); });
       })
       .catch(function (err) {
         btn.disabled = false;
@@ -742,8 +730,10 @@
 
   function handleCommentClick(e) {
     var prNum = e.currentTarget.getAttribute("data-pr");
-    if (!prNum) return;
+    var project = e.currentTarget.getAttribute("data-project") || selectedProject;
+    if (!prNum || !project) return;
     commentPrNum = prNum;
+    commentProject = project;
     $commentPrNum.textContent = prNum;
     $commentText.value = "";
     $commentModal.classList.add("visible");
@@ -753,13 +743,15 @@
   function closeCommentModal() {
     $commentModal.classList.remove("visible");
     commentPrNum = null;
+    commentProject = null;
   }
 
   function submitComment() {
     var body = $commentText.value.trim();
-    if (!body || !commentPrNum || !selectedProject) return;
+    var project = commentProject || selectedProject;
+    if (!body || !commentPrNum || !project) return;
     $commentSubmit.disabled = true;
-    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/prs/" + commentPrNum + "/comment", {
+    api("POST", "/api/projects/" + encodeURIComponent(project) + "/prs/" + commentPrNum + "/comment", {
       body: body,
     })
       .then(function () {
@@ -795,83 +787,25 @@
   function loadProjectData() {
     if (!selectedProject) {
       issues = [];
-      prs = [];
-      enrichmentData = {};
       renderIssues();
-      renderPRs();
       renderScheduler();
       return Promise.resolve();
     }
 
     var name = encodeURIComponent(selectedProject);
-    return Promise.all([
-      api("GET", "/api/projects/" + name + "/issues"),
-      api("GET", "/api/projects/" + name + "/prs"),
-    ]).then(function (results) {
-      repoUrl = results[0].repoUrl || null;
-      issues = results[0].issues || [];
-      prs = results[1].prs || [];
-      renderIssues();
-      renderPRs();
-
-      // Async enrichment: fetch CI/CodeRabbit status after initial render
-      loadPREnrichment();
-    });
-  }
-
-  /**
-   * Fetch PR enrichment (CI + CodeRabbit) and update DOM.
-   * Uses client-side 30s cache to avoid redundant requests.
-   */
-  function loadPREnrichment() {
-    if (!selectedProject) return;
-
-    var now = Date.now();
-    if (enrichmentCacheTime && (now - enrichmentCacheTime) < ENRICHMENT_TTL) {
-      // Cache still valid — just re-apply to DOM (issues may have re-rendered)
-      applyEnrichmentToDOM();
-      return;
-    }
-
-    var name = encodeURIComponent(selectedProject);
-    api("GET", "/api/projects/" + name + "/pr-enrichment")
+    return api("GET", "/api/projects/" + name + "/issues")
       .then(function (data) {
-        enrichmentData = data.enrichment || {};
-        enrichmentCacheTime = Date.now();
-        // Re-render issues to include enrichment data in merge button logic
+        repoUrl = data.repoUrl || null;
+        issues = data.issues || [];
         renderIssues();
-        renderPRs();
-      })
-      .catch(function (err) {
-        console.warn("PR enrichment failed:", err.message);
       });
   }
 
-  /**
-   * Apply enrichment data to already-rendered DOM elements.
-   * Updates CI and CodeRabbit indicator spans by data attribute.
-   */
-  function applyEnrichmentToDOM() {
-    var ciSpans = document.querySelectorAll("[data-pr-ci]");
-    for (var i = 0; i < ciSpans.length; i++) {
-      var prNum = ciSpans[i].getAttribute("data-pr-ci");
-      var e = enrichmentData[prNum];
-      if (e && e.ci) {
-        ciSpans[i].textContent = ciIndicator(e.ci.state);
-        ciSpans[i].className = "pr-ci ci-" + e.ci.state;
-        ciSpans[i].title = ciTooltip(e.ci);
-      }
-    }
-
-    var crSpans = document.querySelectorAll("[data-pr-cr]");
-    for (var j = 0; j < crSpans.length; j++) {
-      var prNum2 = crSpans[j].getAttribute("data-pr-cr");
-      var e2 = enrichmentData[prNum2];
-      if (e2 && e2.coderabbit) {
-        crSpans[j].textContent = coderabbitIndicator(e2.coderabbit);
-        crSpans[j].className = "pr-coderabbit cr-" + (e2.coderabbit.reviewed ? e2.coderabbit.state : "none");
-      }
-    }
+  function loadAllPRs() {
+    return api("GET", "/api/prs").then(function (data) {
+      allPRs = data.prs || [];
+      renderAllPRs();
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -963,7 +897,7 @@
   });
 
   function refreshAll() {
-    return Promise.all([loadSessions(), loadSchedulerStatus(), selectedProject ? loadProjectData() : Promise.resolve()]).catch(function (err) {
+    return Promise.all([loadSessions(), loadAllPRs(), loadSchedulerStatus(), selectedProject ? loadProjectData() : Promise.resolve()]).catch(function (err) {
       // Suppress refresh errors (network blips, etc.)
       console.warn("Refresh failed:", err.message);
     });
@@ -1022,11 +956,7 @@
     }
     issues = [];
     repoUrl = null;
-    prs = [];
-    enrichmentData = {};
-    enrichmentCacheTime = 0;
     renderIssues();
-    renderPRs();
     renderScheduler();
     if (selectedProject) {
       loadProjectData().catch(function (err) {
@@ -1144,12 +1074,9 @@
         localStorage.removeItem("miranda_project");
         $removeProjectBtn.style.display = "none";
         issues = [];
-        prs = [];
         repoUrl = null;
-        enrichmentData = {};
         renderIssues();
-        renderPRs();
-        return loadProjects();
+        return Promise.all([loadProjects(), loadAllPRs()]);
       })
       .catch(function (err) {
         showToast(err.message, "error");
@@ -1403,6 +1330,10 @@
 
     loadSessions().catch(function (err) {
       console.warn("Failed to load sessions:", err.message);
+    });
+
+    loadAllPRs().catch(function (err) {
+      console.warn("Failed to load PRs:", err.message);
     });
 
     loadSchedulerStatus().catch(function (err) {

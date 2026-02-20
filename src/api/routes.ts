@@ -695,6 +695,101 @@ async function handleGetPREnrichment(
 }
 
 /**
+ * GET /api/prs — All open PRs across all projects, filtered to Miranda-created (issue/ branches).
+ * Returns flat array with project name, PR data, linked issues, and enrichment.
+ */
+async function handleGetAllPRs(
+  _req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const projects = await scanProjects();
+
+    // Fetch PRs from all projects in parallel
+    const perProjectResults = await Promise.all(
+      projects.map(async (project) => {
+        try {
+          const { owner, repo } = await getRepoInfo(project.path);
+          const prs = await getOpenPRs(owner, repo);
+          return { project: project.name, owner, repo, prs };
+        } catch (err) {
+          // Best-effort: skip projects that error
+          console.warn(`Failed to fetch PRs for ${project.name}:`, err);
+          return { project: project.name, owner: "", repo: "", prs: [] as GitHubPR[] };
+        }
+      })
+    );
+
+    // Filter to Miranda-created PRs (issue/ branch pattern) and build flat list
+    const allPRs: Array<{
+      project: string;
+      number: number;
+      title: string;
+      state: string;
+      mergeable: boolean | null;
+      url: string;
+      base: string;
+      head: string;
+      linkedIssues: number[];
+      enrichment: PREnrichment | null;
+    }> = [];
+
+    // Collect enrichment fetches
+    const enrichmentPromises: Array<{
+      index: number;
+      promise: Promise<PREnrichment>;
+    }> = [];
+
+    for (const { project, owner, repo, prs } of perProjectResults) {
+      for (const pr of prs) {
+        // Filter: only Miranda-created PRs (branch matches issue/N or issue-N)
+        if (!/issue[/-]\d+/.test(pr.head)) continue;
+
+        const idx = allPRs.length;
+        allPRs.push({
+          project,
+          number: pr.number,
+          title: pr.title,
+          state: pr.state,
+          mergeable: pr.mergeable,
+          url: pr.html_url,
+          base: pr.base,
+          head: pr.head,
+          linkedIssues: extractLinkedIssueNumbers(pr),
+          enrichment: null,
+        });
+
+        if (owner && repo) {
+          enrichmentPromises.push({
+            index: idx,
+            promise: getPREnrichment(owner, repo, pr),
+          });
+        }
+      }
+    }
+
+    // Fetch enrichment in parallel (best-effort)
+    await Promise.all(
+      enrichmentPromises.map(async ({ index, promise }) => {
+        try {
+          allPRs[index].enrichment = await promise;
+        } catch {
+          // Best-effort: leave as null
+        }
+      })
+    );
+
+    json(res, 200, { prs: allPRs });
+  } catch (error) {
+    if (error instanceof GitHubRateLimitError) {
+      json(res, 429, { error: error.message });
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+/**
  * POST /api/restart — Graceful shutdown (process manager restarts).
  * Sends response first, then shuts down after a short delay.
  */
@@ -829,6 +924,12 @@ export async function routeApi(
   }
 
   // --- GitHub integration routes ---
+
+  // GET /api/prs (cross-project)
+  if (pathname === "/api/prs" && method === "GET") {
+    await handleGetAllPRs(req, res);
+    return true;
+  }
 
   // GET /api/projects/:name/issues
   const issuesMatch = pathname.match(/^\/api\/projects\/([^/]+)\/issues$/);
