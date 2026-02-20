@@ -518,7 +518,8 @@ function emitLogEventForRpc(sessionId: string, event: RpcEvent): void {
   switch (event.type) {
     case "tool_execution_start": {
       const te = event as RpcToolEvent;
-      const detail = summarizeToolInput(te.toolName, te.data);
+      const inputData = te.args ?? (typeof te.data === "object" ? te.data as Record<string, unknown> : undefined);
+      const detail = te.intent ?? summarizeToolInput(te.toolName, inputData);
       emitLogEvent(sessionId, { type: "tool_start", tool: te.toolName, content: detail, time });
       break;
     }

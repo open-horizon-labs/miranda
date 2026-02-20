@@ -78,12 +78,18 @@ export interface RpcToolEvent {
   type: "tool_execution_start" | "tool_execution_update" | "tool_execution_end";
   toolName?: string;
   toolCallId?: string;
+  /** Tool input arguments (tool_execution_start) */
+  args?: Record<string, unknown>;
+  /** Human-readable intent description (tool_execution_start) */
+  intent?: string;
+  /** Legacy field — some versions may use data instead of args */
   data?: unknown;
-  /** Result from tool_execution_end - includes details from custom tools */
+  /** Result from tool_execution_end */
   result?: {
     content?: Array<{ type: string; text?: string }>;
     details?: unknown;
   };
+  isError?: boolean;
 }
 
 /** Message streaming events */
