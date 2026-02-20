@@ -228,7 +228,8 @@ async function handleGetIssues(
       };
     });
 
-    json(res, 200, { issues: result });
+    const repoUrl = `https://github.com/${owner}/${repo}`;
+    json(res, 200, { repoUrl, issues: result });
   } catch (error) {
     if (error instanceof GitHubRateLimitError) {
       json(res, 429, { error: error.message });

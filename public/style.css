@@ -308,11 +308,17 @@ html, body {
   gap: 8px;
 }
 
-.issue-number {
+a.issue-number {
   font-size: 13px;
   font-weight: 700;
-  color: var(--tg-theme-hint-color);
+  color: var(--tg-theme-link-color);
   flex-shrink: 0;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+a.issue-number:active {
+  opacity: 0.7;
 }
 
 .issue-title {
@@ -346,10 +352,15 @@ html, body {
   background: rgba(255, 255, 255, 0.04);
 }
 
-.pr-status {
+a.pr-status {
   font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
 }
 
+a.pr-status:active {
+  opacity: 0.7;
+}
 .pr-status.ready { color: #30d158; }
 .pr-status.conflicts { color: #ff9f0a; }
 .pr-status.open { color: var(--tg-theme-hint-color); }
@@ -363,6 +374,24 @@ html, body {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.btn-merge {
+  background: #30d158;
+  color: #000;
+}
+
+.btn-merge-disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--tg-theme-hint-color);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.btn-merge-done {
+  background: rgba(48, 209, 88, 0.15);
+  color: #30d158;
+  cursor: default;
 }
 
 /* --- Modal --- */
