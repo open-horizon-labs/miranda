@@ -521,6 +521,66 @@ async function handleStartNotes(
 }
 
 /**
+ * POST /api/projects/:name/plan — Kick off oh-plan for a project.
+ * Body: { description: string }
+ */
+async function handleStartPlan(
+  req: IncomingMessage,
+  res: ServerResponse,
+  projectName: string,
+  authedUser: TelegramUser
+): Promise<void> {
+  const projectPath = await resolveProject(projectName);
+  if (!projectPath) {
+    json(res, 404, { error: `Project "${projectName}" not found` });
+    return;
+  }
+
+  try {
+    await pullProject(projectPath);
+  } catch (pullErr) {
+    console.warn(`[plan] Pull failed for ${projectName}:`, pullErr);
+  }
+
+  const body = await parseJsonBody<{ description?: string }>(req);
+  const description = body?.description?.trim();
+  if (!description) {
+    json(res, 400, { error: "Missing or empty 'description' field" });
+    return;
+  }
+
+  const chatId = authedUser.id;
+  const timestamp = Date.now();
+  const sessionKey = `oh-plan-${projectName}-${timestamp}`;
+
+  try {
+    const sessionId = await spawnSession("oh-plan", description, chatId, {
+      projectPath,
+      projectName,
+    });
+
+    const session: Session = {
+      taskId: sessionKey,
+      sessionId,
+      skill: "oh-plan",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    json(res, 201, {
+      taskId: sessionKey,
+      sessionId,
+    });
+  } catch (error) {
+    console.error(`[plan] Failed to start oh-plan for ${projectName}:`, error);
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
  * POST /api/projects/:name/prs/:num/merge — Squash-merge a PR.
  */
 async function handleMergePR(
@@ -970,6 +1030,13 @@ export async function routeApi(
   const notesMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/notes$/);
   if (notesMatch && method === "POST") {
     await handleStartNotes(req, res, decodeURIComponent(notesMatch[1]), notesMatch[2], authedUser);
+    return true;
+  }
+
+  // POST /api/projects/:name/plan
+  const planMatch = pathname.match(/^\/api\/projects\/([^/]+)\/plan$/);
+  if (planMatch && method === "POST") {
+    await handleStartPlan(req, res, decodeURIComponent(planMatch[1]), authedUser);
     return true;
   }
 
