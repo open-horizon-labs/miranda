@@ -1059,7 +1059,10 @@
   });
 
   // --- Plan modal handlers ---
-  $planBtn.addEventListener("click", openPlanModal);
+  $planBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    openPlanModal();
+  });
   $planCancel.addEventListener("click", closePlanModal);
   $planSubmit.addEventListener("click", submitPlan);
   $planModal.addEventListener("click", function (e) {

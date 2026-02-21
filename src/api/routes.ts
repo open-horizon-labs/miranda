@@ -538,8 +538,8 @@ async function handleStartPlan(
 
   try {
     await pullProject(projectPath);
-  } catch {
-    // Best-effort pull
+  } catch (pullErr) {
+    console.warn(`[plan] Pull failed for ${projectName}:`, pullErr);
   }
 
   const body = await parseJsonBody<{ description?: string }>(req);
@@ -574,6 +574,7 @@ async function handleStartPlan(
       sessionId,
     });
   } catch (error) {
+    console.error(`[plan] Failed to start oh-plan for ${projectName}:`, error);
     const message = error instanceof Error ? error.message : String(error);
     json(res, 500, { error: message });
   }
