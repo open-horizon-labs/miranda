@@ -50,6 +50,7 @@
   <div class="section-header">
     <span class="section-title">Issues</span>
     <span class="section-badge" id="issues-count" style="display:none">0</span>
+    <button class="btn btn-primary btn-sm" id="plan-btn" style="display:none">Plan</button>
   </div>
   <div class="section-body">
     <div id="issues-tree">
@@ -111,6 +112,18 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" id="add-project-cancel">Cancel</button>
       <button class="btn btn-primary" id="add-project-submit">Clone</button>
+    </div>
+  </div>
+</div>
+
+<!-- Plan Modal -->
+<div class="modal-overlay" id="plan-modal">
+  <div class="modal-content">
+    <div class="modal-title">Plan Issues for <span id="plan-project-name"></span></div>
+    <textarea id="plan-description" placeholder="Describe the work to plan&hellip;"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="plan-cancel">Cancel</button>
+      <button class="btn btn-primary" id="plan-submit">Plan</button>
     </div>
   </div>
 </div>

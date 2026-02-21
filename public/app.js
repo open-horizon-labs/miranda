@@ -85,6 +85,12 @@
   var $schedulerTriggerBtn = document.getElementById("scheduler-trigger-btn");
   var $schedulerStatus = document.getElementById("scheduler-status");
   var $schedulerBadge = document.getElementById("scheduler-badge");
+  var $planBtn = document.getElementById("plan-btn");
+  var $planModal = document.getElementById("plan-modal");
+  var $planProjectName = document.getElementById("plan-project-name");
+  var $planDescription = document.getElementById("plan-description");
+  var $planCancel = document.getElementById("plan-cancel");
+  var $planSubmit = document.getElementById("plan-submit");
 
   var adminBusy = false; // prevents concurrent admin operations
 
@@ -550,10 +556,12 @@
   function renderIssues() {
     if (!selectedProject) {
       $issuesSection.style.display = "none";
+      $planBtn.style.display = "none";
       return;
     }
 
     $issuesSection.style.display = "";
+    $planBtn.style.display = "";
 
     if (issues.length === 0) {
       $issuesTree.innerHTML = '<div class="empty-state">No open issues</div>';
@@ -763,6 +771,38 @@
       })
       .finally(function () {
         $commentSubmit.disabled = false;
+      });
+  }
+
+  function openPlanModal() {
+    if (!selectedProject) return;
+    $planProjectName.textContent = selectedProject;
+    $planDescription.value = "";
+    $planModal.classList.add("visible");
+    $planDescription.focus();
+  }
+
+  function closePlanModal() {
+    $planModal.classList.remove("visible");
+  }
+
+  function submitPlan() {
+    var description = $planDescription.value.trim();
+    if (!description || !selectedProject) return;
+    $planSubmit.disabled = true;
+    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/plan", {
+      description: description,
+    })
+      .then(function () {
+        showToast("Planning started", "success");
+        closePlanModal();
+        return loadSessions();
+      })
+      .catch(function (err) {
+        showToast(err.message, "error");
+      })
+      .finally(function () {
+        $planSubmit.disabled = false;
       });
   }
 
@@ -1015,6 +1055,16 @@
   $commentModal.addEventListener("click", function (e) {
     if (e.target === $commentModal) {
       closeCommentModal();
+    }
+  });
+
+  // --- Plan modal handlers ---
+  $planBtn.addEventListener("click", openPlanModal);
+  $planCancel.addEventListener("click", closePlanModal);
+  $planSubmit.addEventListener("click", submitPlan);
+  $planModal.addEventListener("click", function (e) {
+    if (e.target === $planModal) {
+      closePlanModal();
     }
   });
 
