@@ -534,6 +534,13 @@
       startBtn.setAttribute("data-issue", issue.number);
       startBtn.addEventListener("click", handleStartClick);
       actions.appendChild(startBtn);
+
+      var closeBtn = document.createElement("button");
+      closeBtn.className = "btn btn-danger";
+      closeBtn.textContent = "Close";
+      closeBtn.setAttribute("data-issue", issue.number);
+      closeBtn.addEventListener("click", handleCloseClick);
+      actions.appendChild(closeBtn);
     }
 
 
@@ -686,6 +693,23 @@
       .then(function () {
         showToast("Issue #" + issueNum + " started", "success");
         return loadSessions();
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        showToast(err.message, "error");
+      });
+  }
+
+  function handleCloseClick(e) {
+    var issueNum = e.currentTarget.getAttribute("data-issue");
+    if (!issueNum || !selectedProject) return;
+    if (!confirm("Close issue #" + issueNum + "?")) return;
+    var btn = e.currentTarget;
+    btn.disabled = true;
+    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/issues/" + issueNum + "/close")
+      .then(function () {
+        showToast("Issue #" + issueNum + " closed", "success");
+        return loadProjectData();
       })
       .catch(function (err) {
         btn.disabled = false;

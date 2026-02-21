@@ -15,6 +15,7 @@ import {
   getOpenPRs,
   mergePR,
   commentOnPR,
+  closeIssue,
   findLinkedPR,
   getPREnrichment,
   GitHubRateLimitError,
@@ -455,6 +456,46 @@ async function handleStartIssue(
       issueNumber: parseInt(issueNumber, 10),
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
+ * POST /api/projects/:name/issues/:num/close — Close a GitHub issue.
+ */
+async function handleCloseIssue(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  projectName: string,
+  issueNumber: string
+): Promise<void> {
+  const projectPath = await resolveProject(projectName);
+  if (!projectPath) {
+    json(res, 404, { error: `Project "${projectName}" not found` });
+    return;
+  }
+
+  const num = parseInt(issueNumber, 10);
+  if (isNaN(num) || num <= 0) {
+    json(res, 400, { error: "Invalid issue number" });
+    return;
+  }
+
+  try {
+    const { owner, repo } = await getRepoInfo(projectPath);
+    const result = await closeIssue(owner, repo, num);
+
+    if (result.closed) {
+      json(res, 200, result);
+    } else {
+      json(res, 422, result);
+    }
+  } catch (error) {
+    if (error instanceof GitHubRateLimitError) {
+      json(res, 429, { error: error.message });
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     json(res, 500, { error: message });
   }
@@ -1009,6 +1050,13 @@ export async function routeApi(
   const startMatch = pathname.match(/^\/api\/projects\/([^/]+)\/issues\/(\d+)\/start$/);
   if (startMatch && method === "POST") {
     await handleStartIssue(req, res, decodeURIComponent(startMatch[1]), startMatch[2], authedUser);
+    return true;
+  }
+
+  // POST /api/projects/:name/issues/:num/close
+  const closeMatch = pathname.match(/^\/api\/projects\/([^/]+)\/issues\/(\d+)\/close$/);
+  if (closeMatch && method === "POST") {
+    await handleCloseIssue(req, res, decodeURIComponent(closeMatch[1]), closeMatch[2]);
     return true;
   }
 
