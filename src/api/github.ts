@@ -275,6 +275,29 @@ export async function mergePR(
 }
 
 /**
+ * Close a GitHub issue.
+ */
+export async function closeIssue(
+  owner: string,
+  repo: string,
+  issueNumber: number
+): Promise<{ closed: boolean; message: string }> {
+  try {
+    await githubFetch<{ state: string }>(
+      `/repos/${owner}/${repo}/issues/${issueNumber}`,
+      {
+        method: "PATCH",
+        body: { state: "closed" },
+      }
+    );
+    return { closed: true, message: "Issue closed" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { closed: false, message };
+  }
+}
+
+/**
  * Post a comment on a PR (or issue — same API).
  */
 export async function commentOnPR(
