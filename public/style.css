@@ -36,10 +36,13 @@ html, body {
   line-height: 1.4;
   color: var(--tg-theme-text-color);
   background: var(--tg-theme-bg-color);
-  padding-top: env(safe-area-inset-top, 0px);
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
   overflow-x: hidden;
+}
+
+body {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* --- Header --- */
