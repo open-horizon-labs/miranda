@@ -857,6 +857,7 @@ a.pr-status:active {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .toggle-label {
@@ -866,6 +867,19 @@ a.pr-status:active {
   cursor: pointer;
   font-size: 13px;
   color: var(--tg-theme-text-color);
+  min-width: 0;
+}
+
+.toggle-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+#scheduler-trigger-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .toggle-label input[type="checkbox"] {
