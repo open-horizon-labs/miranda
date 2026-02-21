@@ -36,6 +36,7 @@ html, body {
   line-height: 1.4;
   color: var(--tg-theme-text-color);
   background: var(--tg-theme-bg-color);
+  padding-top: env(safe-area-inset-top, 0px);
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
   overflow-x: hidden;
@@ -554,7 +555,7 @@ a.pr-status:active {
 .modal-content {
   background: var(--tg-theme-secondary-bg-color);
   border-radius: var(--radius) var(--radius) 0 0;
-  padding: 20px 16px;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
   width: 100%;
   max-width: 500px;
   display: flex;
@@ -623,7 +624,7 @@ a.pr-status:active {
 
 .toast {
   position: fixed;
-  bottom: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%) translateY(100px);
   padding: 10px 20px;
@@ -662,7 +663,7 @@ a.pr-status:active {
   height: 2px;
   background: var(--tg-theme-button-color);
   position: fixed;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   left: 0;
   z-index: 50;
   animation: loading 1.5s ease-in-out infinite;
