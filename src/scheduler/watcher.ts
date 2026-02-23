@@ -1,18 +1,18 @@
 /**
- * Dependency scheduler — polls GitHub for resolved and stack-ready issues,
- * then auto-starts oh-task sessions.
+ * Dependency scheduler — polls GitHub for stack-ready issues
+ * and auto-starts oh-task sessions stacked on their dep's branch.
  *
- * - "Resolved" deps: issue is closed (PR merged). Child starts on main.
- * - "Stack-ready" deps: issue is open but its PR has green CI, approved CR,
- *   and no active session. Child starts stacked on the dep's branch.
+ * The scheduler does NOT auto-start root issues (no deps or all deps merged).
+ * Those require manual /ohtask. Only dependent issues whose parent PR is
+ * green (CI + CodeRabbit) and whose session has finished get auto-started.
  *
  * One API call per resource type per project per poll cycle.
  */
 
 import { config } from "../config.js";
-import { getRepoInfo, getOpenIssues, getOpenPRs, getMergedPRsSince, findLinkedPR, getPREnrichment, type MergedPR, type GitHubPR } from "../api/github.js";
+import { getRepoInfo, getOpenIssues, getOpenPRs, findLinkedPR, getPREnrichment, type GitHubPR } from "../api/github.js";
 import { parseDependencies } from "../api/deps.js";
-import { buildDependencyGraph, findUnblockedIssues, findStackUnblockedIssues, detectCycles, type DependencyGraph } from "./graph.js";
+import { buildDependencyGraph, findStackUnblockedIssues, detectCycles, type DependencyGraph } from "./graph.js";
 import { scanProjects } from "../projects/scanner.js";
 import { spawnSession } from "../bot/commands.js";
 import { getSession, setSession, getAllSessions } from "../state/sessions.js";
@@ -162,7 +162,6 @@ async function pollAll(): Promise<void> {
 
 /** Result of polling a single project. */
 interface PollResult {
-  started: number[];
   stacked: Array<{ issue: number; baseDep: number; baseBranch: string }>;
   alreadyRunning: number[];
   blocked: number[];
@@ -170,17 +169,19 @@ interface PollResult {
 }
 
 /**
- * Poll a single project for resolved and stack-ready issues.
+ * Poll a single project for stack-ready issues.
+ *
+ * The scheduler only auto-starts issues that can stack on a dep's branch.
+ * Root issues (no deps or all deps resolved) require manual /ohtask.
  *
  * Algorithm:
  * 1. Fetch open issues, open PRs, and recently merged PRs
  * 2. Build dependency graph from open issues
- * 3. Find fully unblocked issues (all deps resolved/closed)
- * 4. Find stack-unblocked issues (exactly one dep has a ready PR, session finished)
- * 5. Start oh-task for both categories (respecting concurrent limit)
+ * 3. Find stack-unblocked issues (exactly one dep has a ready PR, session finished)
+ * 4. Start oh-task with --base set to dep's branch
  */
 async function pollProject(projectName: string, manual = false): Promise<PollResult> {
-  const result: PollResult = { started: [], stacked: [], alreadyRunning: [], blocked: [], cycles: [] };
+  const result: PollResult = { stacked: [], alreadyRunning: [], blocked: [], cycles: [] };
 
   // Resolve project path
   const projects = await scanProjects();
@@ -201,13 +202,10 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
     state.lastCheckAt = Date.now() - 24 * 60 * 60 * 1000;
   }
 
-  const since = new Date(state.lastCheckAt);
-
   // Fetch data from GitHub
-  const [openIssues, openPRs, mergedPRs] = await Promise.all([
+  const [openIssues, openPRs] = await Promise.all([
     getOpenIssues(owner, repo),
     getOpenPRs(owner, repo),
-    getMergedPRsSince(owner, repo, since),
   ]);
 
   // Update last check timestamp
@@ -260,20 +258,13 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
     }
   }
 
-  // --- Phase 1: fully unblocked issues (all deps merged/closed) ---
-  const unblocked = findUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers);
-
-  // --- Phase 2: stack-ready deps (PR green + CR approved + session finished) ---
+  // Find stack-ready deps (PR green + CR approved + session finished)
   const { stackReadyIssues, branchMap } = await buildStackReadySet(
     owner, repo, projectName, openPRs, openIssueNumbers, graph,
   );
   const stackUnblocked = findStackUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers, stackReadyIssues);
 
-  // Exclude issues already found as fully unblocked (prefer the non-stacked path)
-  const unblockedSet = new Set(unblocked);
-  const stackOnly = stackUnblocked.filter((s) => !unblockedSet.has(s.issueNumber));
-
-  if (unblocked.length === 0 && stackOnly.length === 0) {
+  if (stackUnblocked.length === 0) {
     checkTreeCompletion(projectName, state, openIssueNumbers);
     return result;
   }
@@ -285,11 +276,10 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   const availableSlots = config.schedulerMaxConcurrent - activeSessions.length;
 
   if (availableSlots <= 0) {
-    result.blocked = [...unblocked, ...stackOnly.map((s) => s.issueNumber)];
+    result.blocked = stackUnblocked.map((s) => s.issueNumber);
     return result;
   }
 
-  // Start oh-task for unblocked issues (up to available slots)
   const chatId = config.schedulerChatId;
   if (!chatId) {
     console.warn("Scheduler: no chatId configured, cannot start sessions");
@@ -298,31 +288,11 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
 
   let slotsRemaining = availableSlots;
 
-  // --- Spawn fully-unblocked issues (on main) ---
-  const toStartOnMain = unblocked.slice(0, slotsRemaining);
-  for (const issueNumber of toStartOnMain) {
-    const spawned = await trySpawnIssue(projectName, project.path, issueNumber, chatId);
-    if (spawned === "already_running") {
-      result.alreadyRunning.push(issueNumber);
-      continue;
-    }
-    if (spawned === "started") {
-      result.started.push(issueNumber);
-      slotsRemaining--;
-
-      const resolvedDeps = findResolvedDeps(issueNumber, graph, mergedPRs, openIssueNumbers);
-      const depInfo = resolvedDeps.length > 0
-        ? ` (deps resolved: ${resolvedDeps.map((n) => `#${n} merged`).join(", ")})`
-        : "";
-      notify(`🤖 Auto-starting *#${issueNumber}* for *${projectName}*${depInfo}`);
-    }
-  }
-
-  // --- Spawn stack-unblocked issues (on dep's branch) ---
-  const toStack = stackOnly.slice(0, slotsRemaining);
+  // Spawn stack-unblocked issues (on dep's branch)
+  const toStack = stackUnblocked.slice(0, slotsRemaining);
   for (const { issueNumber, baseDep } of toStack) {
     const baseBranch = branchMap.get(baseDep);
-    if (!baseBranch) continue; // Should not happen — branchMap built from stack-ready set
+    if (!baseBranch) continue;
 
     const spawned = await trySpawnIssue(projectName, project.path, issueNumber, chatId, baseBranch);
     if (spawned === "already_running") {
@@ -337,9 +307,8 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   }
 
   // Report slot-blocked issues
-  const allCandidates = [...unblocked, ...stackOnly.map((s) => s.issueNumber)];
-  const startedSet = new Set([...result.started, ...result.stacked.map((s) => s.issue), ...result.alreadyRunning]);
-  result.blocked = allCandidates.filter((n) => !startedSet.has(n));
+  const startedSet = new Set([...result.stacked.map((s) => s.issue), ...result.alreadyRunning]);
+  result.blocked = stackUnblocked.map((s) => s.issueNumber).filter((n) => !startedSet.has(n));
 
   // Check tree completion
   checkTreeCompletion(projectName, state, openIssueNumbers);
@@ -454,57 +423,6 @@ async function buildStackReadySet(
 
   await Promise.all(checks);
   return { stackReadyIssues, branchMap };
-}
-
-/**
- * Find which dependencies of a given issue were resolved by recently merged PRs.
- */
-function findResolvedDeps(
-  issueNumber: number,
-  graph: DependencyGraph,
-  mergedPRs: MergedPR[],
-  openIssueNumbers: Set<number>,
-): number[] {
-  const node = graph.nodes.get(issueNumber);
-  if (!node) return [];
-
-  // Extract issue numbers linked to merged PRs
-  const mergedIssueNumbers = new Set<number>();
-  for (const pr of mergedPRs) {
-    const linked = extractLinkedIssueNumbers(pr);
-    for (const n of linked) {
-      mergedIssueNumbers.add(n);
-    }
-  }
-
-  // Return deps of this issue that are both resolved (not open) and linked to a merged PR
-  return node.dependsOn.filter(
-    (dep) => !openIssueNumbers.has(dep) && mergedIssueNumbers.has(dep),
-  );
-}
-
-/**
- * Extract issue numbers linked from a merged PR body and branch name.
- */
-function extractLinkedIssueNumbers(pr: MergedPR): number[] {
-  const issues = new Set<number>();
-
-  // Check branch name: issue-N, issue/N
-  const branchMatch = pr.head.match(/issue[/-](\d+)/);
-  if (branchMatch) {
-    issues.add(parseInt(branchMatch[1], 10));
-  }
-
-  // Check body for Closes/Fixes/Resolves #N
-  if (pr.body) {
-    const pattern = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(pr.body)) !== null) {
-      issues.add(parseInt(match[1], 10));
-    }
-  }
-
-  return [...issues];
 }
 
 /**
