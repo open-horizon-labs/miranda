@@ -1083,12 +1083,16 @@
       if (pr.mergeable === true) {
         html += '<span class="pr-status ready">\u2713 Ready</span>';
       } else if (pr.mergeable === false) {
-        html += '<span class="pr-status conflicts">\u2717 Conflicts</span>';
+        html += '<span class="pr-status conflicts clickable" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="fix-conflicts">\u2717 Conflicts</span>';
       } else {
         html += '<span class="pr-status open">Checking\u2026</span>';
       }
       if (enrichment && enrichment.ci) {
-        html += '<span class="pr-ci ci-' + enrichment.ci.state + '" title="' + escAttr(ciTooltip(enrichment.ci)) + '">' + ciIndicator(enrichment.ci.state) + '</span>';
+        if (enrichment.ci.state === 'failure') {
+          html += '<span class="pr-ci ci-failure clickable" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="fix-ci" title="' + escAttr(ciTooltip(enrichment.ci)) + '">' + ciIndicator(enrichment.ci.state) + '</span>';
+        } else {
+          html += '<span class="pr-ci ci-' + enrichment.ci.state + '" title="' + escAttr(ciTooltip(enrichment.ci)) + '">' + ciIndicator(enrichment.ci.state) + '</span>';
+        }
       }
       if (enrichment && enrichment.coderabbit && enrichment.coderabbit.reviewed) {
         html += '<span class="pr-coderabbit cr-' + enrichment.coderabbit.state + '">' + coderabbitIndicator(enrichment.coderabbit) + '</span>';
@@ -1100,7 +1104,7 @@
       if (pr.mergeable === true) {
         html += '<button class="btn btn-merge" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '">Merge</button>';
       } else if (pr.mergeable === false) {
-        html += '<span class="btn btn-merge-disabled">Conflicts</span>';
+        html += '<button class="btn btn-danger" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="fix-conflicts">Fix Conflicts</button>';
       } else {
         html += '<span class="btn btn-merge-disabled">Checking\u2026</span>';
       }
@@ -1138,6 +1142,14 @@
     for (var ub = 0; ub < updateBtns.length; ub++) {
       updateBtns[ub].addEventListener("click", handleUpdateBranchClick);
     }
+    var fixConflictBtns = $allPrsList.querySelectorAll('[data-action="fix-conflicts"]');
+    for (var fc = 0; fc < fixConflictBtns.length; fc++) {
+      fixConflictBtns[fc].addEventListener('click', handleFixConflictsClick);
+    }
+    var fixCiBtns = $allPrsList.querySelectorAll('[data-action="fix-ci"]');
+    for (var fi = 0; fi < fixCiBtns.length; fi++) {
+      fixCiBtns[fi].addEventListener('click', handleFixCiClick);
+    }
     var prNumLinks = $allPrsList.querySelectorAll(".pr-card-number");
     for (var n = 0; n < prNumLinks.length; n++) {
       prNumLinks[n].addEventListener("click", function () {
@@ -1150,6 +1162,40 @@
   // ---------------------------------------------------------------------------
   // Action handlers
   // ---------------------------------------------------------------------------
+
+  function commentAndNotes(project, prNum, comment, btn, label) {
+    btn.disabled = true;
+    btn.textContent = 'Starting\u2026';
+    api('POST', '/api/projects/' + encodeURIComponent(project) + '/prs/' + prNum + '/comment', { body: comment })
+      .then(function () {
+        return api('POST', '/api/projects/' + encodeURIComponent(project) + '/prs/' + prNum + '/notes');
+      })
+      .then(function () {
+        showToast(label + ' started for PR #' + prNum, 'success');
+        return loadSessions().then(function () { renderAllPRs(); });
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = label;
+        showToast(err.message, 'error');
+      });
+  }
+
+  function handleFixConflictsClick(e) {
+    var prNum = e.currentTarget.getAttribute('data-pr');
+    var project = e.currentTarget.getAttribute('data-project') || selectedProject;
+    if (!prNum || !project) return;
+    if (!confirm('Comment "Resolve conflicts" and start oh-notes for PR #' + prNum + '?')) return;
+    commentAndNotes(project, prNum, 'Resolve conflicts', e.currentTarget, 'Fix Conflicts');
+  }
+
+  function handleFixCiClick(e) {
+    var prNum = e.currentTarget.getAttribute('data-pr');
+    var project = e.currentTarget.getAttribute('data-project') || selectedProject;
+    if (!prNum || !project) return;
+    if (!confirm('Comment "Fix CI" and start oh-notes for PR #' + prNum + '?')) return;
+    commentAndNotes(project, prNum, 'Fix CI', e.currentTarget, 'Fix CI');
+  }
 
   function handleStartClick(e) {
     var issueNum = e.currentTarget.getAttribute("data-issue");
