@@ -639,7 +639,8 @@
       html += '</div>';
       // Stack target
       if (isStacked) {
-        html += '<div class="pr-card-stack">→ ' + esc(pr.base) + '</div>';
+        var baseNum = pr.base.match(/issue[/-](\d+)/);
+        html += '<div class="pr-card-stack">→ ' + (baseNum ? 'PR #' + baseNum[1] : esc(pr.base)) + '</div>'
       }
 
       // Linked issues
