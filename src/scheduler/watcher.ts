@@ -312,9 +312,9 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   );
   const allStackUnblocked = findStackUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers, stackReadyIssues);
 
-  // Apply factory phase ordering: block later-phase issues until earlier phases clear
+  // Apply factory phase ordering, but allow earlier-phase issues that are already stack-ready
   const issuesWithLabels = openIssues.map((issue) => ({ number: issue.number, labels: issue.labels }));
-  const phaseFiltered = filterByFactoryPhase(allStackUnblocked, issuesWithLabels, openIssueNumbers);
+  const phaseFiltered = filterByFactoryPhase(allStackUnblocked, issuesWithLabels, openIssueNumbers, stackReadyIssues);
 
   // Filter to only issues explicitly queued
   const queued = state.scheduledChains;

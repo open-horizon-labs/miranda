@@ -198,7 +198,7 @@ export function getIssueFactoryPhase(labels: string[]): FactoryPhase | null {
 /**
  * Filter stack-unblocked issues by factory phase ordering.
  *
- * An issue in phase N is blocked if there are ANY open issues in
+ * An issue in phase N is blocked if there are ANY open, NOT-stack-ready issues in
  * an earlier phase (< N) for the same factory app.
  *
  * This handles the evaluation-loop pattern: critique (phase 2) is
@@ -211,12 +211,14 @@ export function filterByFactoryPhase(
 	candidates: StackUnblocked[],
 	allIssues: Array<{ number: number; labels: string[] }>,
 	openIssueNumbers: Set<number>,
+	stackReadyIssues: Set<number> = new Set(),
 ): StackUnblocked[] {
 	// Build a map: factory app → phase index → set of open issue numbers
 	const phaseMap = new Map<string, Map<number, Set<number>>>();
 
 	for (const issue of allIssues) {
 		if (!openIssueNumbers.has(issue.number)) continue;
+		if (stackReadyIssues.has(issue.number)) continue; // ready issues do not block later phases
 		const fp = getIssueFactoryPhase(issue.labels);
 		if (!fp) continue;
 
