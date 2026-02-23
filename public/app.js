@@ -981,7 +981,7 @@
           $schedulerStatus.style.fontSize = "12px";
         }
 
-        return Promise.all([loadSessions(), loadSchedulerStatus()]);
+        return loadSessions();
       })
       .catch(function (err) {
         showToast(err.message, "error");
