@@ -449,7 +449,7 @@ async function buildStackReadySet(
       entry.ci = enrichment.ci.state;
       entry.coderabbit = enrichment.coderabbit.reviewed ? (enrichment.coderabbit.state ?? "none") : "not_reviewed";
       const ciGreen = enrichment.ci.state === "success";
-      const crOk = !enrichment.coderabbit.reviewed || enrichment.coderabbit.state === "APPROVED";
+      const crOk = !enrichment.coderabbit.reviewed || enrichment.coderabbit.state !== "CHANGES_REQUESTED";
 
       if (ciGreen && crOk) {
         stackReadyIssues.add(depIssue);
