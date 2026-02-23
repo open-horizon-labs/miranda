@@ -823,6 +823,12 @@
                 ciSpan.className = 'pr-ci ci-' + enrichment.ci.state;
                 ciSpan.title = ciTooltip(enrichment.ci);
                 ciSpan.textContent = ciIndicator(enrichment.ci.state);
+                if (enrichment.ci.state === 'failure') {
+                  ciSpan.classList.add('clickable');
+                  ciSpan.setAttribute('data-pr', issue.pr.number);
+                  ciSpan.setAttribute('data-project', selectedProject);
+                  ciSpan.addEventListener('click', handleFixCiClick);
+                }
                 actions.appendChild(ciSpan);
               }
               if (enrichment.coderabbit && enrichment.coderabbit.reviewed) {
@@ -843,10 +849,13 @@
               mergeBtn.addEventListener('click', handleMergeClick);
               actions.appendChild(mergeBtn);
             } else if (issue.pr.mergeable === false) {
-              var conflictsSpan = document.createElement('span');
-              conflictsSpan.className = 'btn btn-merge-disabled btn-compact';
-              conflictsSpan.textContent = 'Conflicts';
-              actions.appendChild(conflictsSpan);
+              var conflictsBtn = document.createElement('button');
+              conflictsBtn.className = 'btn btn-danger btn-compact';
+              conflictsBtn.textContent = 'Fix Conflicts';
+              conflictsBtn.setAttribute('data-pr', issue.pr.number);
+              conflictsBtn.setAttribute('data-project', selectedProject);
+              conflictsBtn.addEventListener('click', handleFixConflictsClick);
+              actions.appendChild(conflictsBtn);
             } else {
               var checkingSpan = document.createElement('span');
               checkingSpan.className = 'btn btn-merge-disabled btn-compact';
