@@ -663,12 +663,55 @@
       var pl = pipelines[i];
       var appDiv = document.createElement('div');
       appDiv.className = 'factory-pipeline-app';
+      var storageKey = 'miranda_factory_collapsed_' + pl.app;
+
+      // Header with title + chevron (collapsible)
+      var header = document.createElement('div');
+      header.className = 'factory-pipeline-header';
+
+      var chevron = document.createElement('span');
+      chevron.className = 'factory-pipeline-chevron';
+      chevron.textContent = '\u25BE';
+      header.appendChild(chevron);
+
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'factory-pipeline-title';
+      titleSpan.textContent = pl.app.toUpperCase() + ' Pipeline';
+      header.appendChild(titleSpan);
+
+      // Summary badge in header (always visible even when collapsed)
+      var allDone = true;
+      var summaryParts = [];
+      var firstActiveFound = false;
+      for (var s = 0; s < pl.phases.length; s++) {
+        var sp = pl.phases[s];
+        if (sp.open === 0 && !firstActiveFound) {
+          summaryParts.push('\u2713 ' + sp.label);
+        } else if (sp.open > 0 && !firstActiveFound) {
+          summaryParts.push(sp.label + ' (' + sp.open + ')');
+          firstActiveFound = true;
+          allDone = false;
+        } else {
+          summaryParts.push('\u25CB ' + sp.label);
+          allDone = false;
+        }
+      }
+      var summary = document.createElement('span');
+      summary.className = 'factory-pipeline-summary';
+      summary.textContent = summaryParts.join(' \u2192 ');
+      header.appendChild(summary);
+
+      appDiv.appendChild(header);
+
+      // Body (collapsible content)
+      var body = document.createElement('div');
+      body.className = 'factory-pipeline-body';
 
       // Phase progress bar
       var stepsDiv = document.createElement('div');
       stepsDiv.className = 'factory-pipeline-steps';
 
-      var firstActiveFound = false;
+      firstActiveFound = false;
       for (var p = 0; p < pl.phases.length; p++) {
         if (p > 0) {
           var arrow = document.createElement('span');
@@ -695,7 +738,7 @@
         }
         stepsDiv.appendChild(step);
       }
-      appDiv.appendChild(stepsDiv);
+      body.appendChild(stepsDiv);
 
       // Issue rows per phase
       for (var q = 0; q < pl.phases.length; q++) {
@@ -763,7 +806,7 @@
           if (hasActiveTaskSession || hasActiveJoinSession) {
             var runSpan = document.createElement('span');
             runSpan.className = 'btn btn-in-progress btn-compact';
-            runSpan.textContent = hasActiveJoinSession ? 'Joining…' : 'In Progress…';
+            runSpan.textContent = hasActiveJoinSession ? 'Joining\u2026' : 'In Progress\u2026';
             actions.appendChild(runSpan);
           } else {
             var startBtn = document.createElement('button');
@@ -794,8 +837,27 @@
           row.appendChild(actions);
           phaseGroup.appendChild(row);
         }
-        appDiv.appendChild(phaseGroup);
+        body.appendChild(phaseGroup);
       }
+
+      appDiv.appendChild(body);
+
+      // Restore collapsed state
+      if (localStorage.getItem(storageKey) === '1') {
+        appDiv.classList.add('collapsed');
+      }
+
+      // Toggle handler
+      header.addEventListener('click', (function (div, key) {
+        return function () {
+          div.classList.toggle('collapsed');
+          if (div.classList.contains('collapsed')) {
+            localStorage.setItem(key, '1');
+          } else {
+            localStorage.removeItem(key);
+          }
+        };
+      })(appDiv, storageKey));
 
       container.appendChild(appDiv);
     }
