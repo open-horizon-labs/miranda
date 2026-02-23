@@ -49,6 +49,7 @@
 
   // Scheduler state
   var schedulerStatus = null; // { running, pollIntervalMs, maxConcurrentSessions, projects }
+  var currentFactoryIssueNumbers = {}; // { issueNumber: true } for selected project
 
   // ---------------------------------------------------------------------------
   // DOM refs
@@ -648,6 +649,16 @@
     return { pipelines: pipelines, factoryIssueNumbers: factoryIssueNumbers };
   }
 
+  // Look up full PR data from allPRs global (enrichment, behindBy, etc.)
+  function findFactoryPR(project, prNumber) {
+    for (var i = 0; i < allPRs.length; i++) {
+      if (allPRs[i].project === project && allPRs[i].number === prNumber) {
+        return allPRs[i];
+      }
+    }
+    return null;
+  }
+
   function renderFactoryPipeline(pipelines) {
     $factoryPipeline.innerHTML = '';
     if (!pipelines.length) {
@@ -795,44 +806,131 @@
             row.appendChild(prBadge);
           }
 
-          // Action buttons
+          // Action buttons — PR actions if PR exists, else issue actions
           var actions = document.createElement('span');
           actions.className = 'factory-issue-actions';
 
-          var issueTaskSessionId = selectedProject ? 'oh-task-' + selectedProject + '-' + issue.number : null;
-          var issueJoinSessionId = selectedProject ? 'oh-join-' + selectedProject + '-' + issue.number : null;
-          var hasActiveTaskSession = issueTaskSessionId && sessions.some(function (s) { return s.taskId === issueTaskSessionId; });
-          var hasActiveJoinSession = issueJoinSessionId && sessions.some(function (s) { return s.taskId === issueJoinSessionId; });
-          if (hasActiveTaskSession || hasActiveJoinSession) {
-            var runSpan = document.createElement('span');
-            runSpan.className = 'btn btn-in-progress btn-compact';
-            runSpan.textContent = hasActiveJoinSession ? 'Joining\u2026' : 'In Progress\u2026';
-            actions.appendChild(runSpan);
-          } else {
-            var startBtn = document.createElement('button');
-            startBtn.className = 'btn btn-primary btn-compact';
-            startBtn.textContent = 'Start';
-            startBtn.setAttribute('data-issue', issue.number);
-            startBtn.addEventListener('click', handleStartClick);
-            actions.appendChild(startBtn);
+          if (issue.pr) {
+            // PR actions inline in factory pipeline
+            var fullPR = findFactoryPR(selectedProject, issue.pr.number);
+            var enrichment = fullPR ? fullPR.enrichment : null;
+            var behindBy = fullPR ? (fullPR.behindBy || 0) : 0;
 
-            if (isMultiDependencyIssue(issue)) {
-              var joinBtn = document.createElement('button');
-              joinBtn.className = 'btn btn-secondary btn-compact';
-              joinBtn.textContent = 'Join';
-              joinBtn.setAttribute('data-issue', issue.number);
-              joinBtn.addEventListener('click', handleJoinClick);
-              actions.appendChild(joinBtn);
+            // Status indicators (CI + CodeRabbit)
+            if (enrichment) {
+              if (enrichment.ci) {
+                var ciSpan = document.createElement('span');
+                ciSpan.className = 'pr-ci ci-' + enrichment.ci.state;
+                ciSpan.title = ciTooltip(enrichment.ci);
+                ciSpan.textContent = ciIndicator(enrichment.ci.state);
+                actions.appendChild(ciSpan);
+              }
+              if (enrichment.coderabbit && enrichment.coderabbit.reviewed) {
+                var crSpan = document.createElement('span');
+                crSpan.className = 'pr-coderabbit cr-' + enrichment.coderabbit.state;
+                crSpan.textContent = coderabbitIndicator(enrichment.coderabbit);
+                actions.appendChild(crSpan);
+              }
             }
-          }
 
-          var isQueued = queuedSet[issue.number];
-          var queueBtn = document.createElement('button');
-          queueBtn.className = 'btn btn-compact ' + (isQueued ? 'btn-queued' : 'btn-queue');
-          queueBtn.textContent = isQueued ? 'Queued' : 'Queue';
-          queueBtn.setAttribute('data-issue', issue.number);
-          queueBtn.addEventListener('click', handleQueueClick);
-          actions.appendChild(queueBtn);
+            // Merge / Conflicts
+            if (issue.pr.mergeable === true) {
+              var mergeBtn = document.createElement('button');
+              mergeBtn.className = 'btn btn-merge btn-compact';
+              mergeBtn.textContent = 'Merge';
+              mergeBtn.setAttribute('data-pr', issue.pr.number);
+              mergeBtn.setAttribute('data-project', selectedProject);
+              mergeBtn.addEventListener('click', handleMergeClick);
+              actions.appendChild(mergeBtn);
+            } else if (issue.pr.mergeable === false) {
+              var conflictsSpan = document.createElement('span');
+              conflictsSpan.className = 'btn btn-merge-disabled btn-compact';
+              conflictsSpan.textContent = 'Conflicts';
+              actions.appendChild(conflictsSpan);
+            } else {
+              var checkingSpan = document.createElement('span');
+              checkingSpan.className = 'btn btn-merge-disabled btn-compact';
+              checkingSpan.textContent = 'Checking\u2026';
+              actions.appendChild(checkingSpan);
+            }
+
+            // Update branch (if behind)
+            if (behindBy > 0 && issue.pr.mergeable !== false) {
+              var updateBtn = document.createElement('button');
+              updateBtn.className = 'btn btn-update btn-compact';
+              updateBtn.textContent = 'Update';
+              updateBtn.setAttribute('data-pr', issue.pr.number);
+              updateBtn.setAttribute('data-project', selectedProject);
+              updateBtn.setAttribute('data-action', 'update-branch');
+              updateBtn.addEventListener('click', handleUpdateBranchClick);
+              actions.appendChild(updateBtn);
+            }
+
+            // Comment
+            var commentBtn = document.createElement('button');
+            commentBtn.className = 'btn btn-secondary btn-compact';
+            commentBtn.textContent = 'Comment';
+            commentBtn.setAttribute('data-pr', issue.pr.number);
+            commentBtn.setAttribute('data-project', selectedProject);
+            commentBtn.setAttribute('data-action', 'comment');
+            commentBtn.addEventListener('click', handleCommentClick);
+            actions.appendChild(commentBtn);
+
+            // Notes (oh-notes)
+            var notesSessionId = 'oh-notes-' + selectedProject + '-' + issue.pr.number;
+            var notesActive = sessions.some(function (s) { return s.taskId === notesSessionId; });
+            if (notesActive) {
+              var notesSpan = document.createElement('span');
+              notesSpan.className = 'btn btn-in-progress btn-compact';
+              notesSpan.textContent = 'Notes\u2026';
+              actions.appendChild(notesSpan);
+            } else {
+              var notesBtn = document.createElement('button');
+              notesBtn.className = 'btn btn-notes btn-compact';
+              notesBtn.textContent = 'Notes';
+              notesBtn.setAttribute('data-pr', issue.pr.number);
+              notesBtn.setAttribute('data-project', selectedProject);
+              notesBtn.setAttribute('data-action', 'notes');
+              notesBtn.addEventListener('click', handleNotesClick);
+              actions.appendChild(notesBtn);
+            }
+          } else {
+            // Issue actions (no PR yet)
+            var issueTaskSessionId = selectedProject ? 'oh-task-' + selectedProject + '-' + issue.number : null;
+            var issueJoinSessionId = selectedProject ? 'oh-join-' + selectedProject + '-' + issue.number : null;
+            var hasActiveTaskSession = issueTaskSessionId && sessions.some(function (s) { return s.taskId === issueTaskSessionId; });
+            var hasActiveJoinSession = issueJoinSessionId && sessions.some(function (s) { return s.taskId === issueJoinSessionId; });
+            if (hasActiveTaskSession || hasActiveJoinSession) {
+              var runSpan = document.createElement('span');
+              runSpan.className = 'btn btn-in-progress btn-compact';
+              runSpan.textContent = hasActiveJoinSession ? 'Joining\u2026' : 'In Progress\u2026';
+              actions.appendChild(runSpan);
+            } else {
+              var startBtn = document.createElement('button');
+              startBtn.className = 'btn btn-primary btn-compact';
+              startBtn.textContent = 'Start';
+              startBtn.setAttribute('data-issue', issue.number);
+              startBtn.addEventListener('click', handleStartClick);
+              actions.appendChild(startBtn);
+
+              if (isMultiDependencyIssue(issue)) {
+                var joinBtn = document.createElement('button');
+                joinBtn.className = 'btn btn-secondary btn-compact';
+                joinBtn.textContent = 'Join';
+                joinBtn.setAttribute('data-issue', issue.number);
+                joinBtn.addEventListener('click', handleJoinClick);
+                actions.appendChild(joinBtn);
+              }
+            }
+
+            var isQueued = queuedSet[issue.number];
+            var queueBtn = document.createElement('button');
+            queueBtn.className = 'btn btn-compact ' + (isQueued ? 'btn-queued' : 'btn-queue');
+            queueBtn.textContent = isQueued ? 'Queued' : 'Queue';
+            queueBtn.setAttribute('data-issue', issue.number);
+            queueBtn.addEventListener('click', handleQueueClick);
+            actions.appendChild(queueBtn);
+          }
 
           row.appendChild(actions);
           phaseGroup.appendChild(row);
@@ -870,6 +968,7 @@
     if (!selectedProject) {
       $issuesSection.style.display = "none";
       $planBtn.style.display = "none";
+      currentFactoryIssueNumbers = {};
       renderFactoryPipeline([]);
       return;
     }
@@ -880,6 +979,7 @@
     if (issues.length === 0) {
       $issuesTree.innerHTML = '<div class="empty-state">No open issues</div>';
       $issuesCount.style.display = "none";
+      currentFactoryIssueNumbers = {};
       renderFactoryPipeline([]);
       return;
     }
@@ -887,6 +987,7 @@
     // Factory pipeline — detect first, filter from tree
     var factory = detectFactoryPipelines();
     var factoryNums = factory.factoryIssueNumbers;
+    currentFactoryIssueNumbers = factoryNums;
 
     // Issue count excludes factory issues
     var nonFactoryCount = issues.length;
@@ -915,25 +1016,36 @@
     }
 
     renderFactoryPipeline(factory.pipelines);
+    // Re-render global PR view to filter out factory PRs
+    renderAllPRs();
   }
 
   function renderAllPRs() {
-    if (allPRs.length === 0) {
+    // Filter out PRs that belong to factory issues (shown inline in factory pipeline)
+    var filteredPRs = allPRs.filter(function (pr) {
+      if (pr.project !== selectedProject || !pr.linkedIssues) return true;
+      for (var k = 0; k < pr.linkedIssues.length; k++) {
+        if (currentFactoryIssueNumbers[pr.linkedIssues[k]]) return false;
+      }
+      return true;
+    });
+
+    if (filteredPRs.length === 0) {
       $allPrsList.innerHTML = '<div class="empty-state">No open PRs</div>';
       $allPrsCount.style.display = "none";
       return;
     }
 
-    $allPrsCount.textContent = allPRs.length;
+    $allPrsCount.textContent = filteredPRs.length;
     $allPrsCount.style.display = "";
     var html = "";
     var prByProjectHead = {};
-    for (var p = 0; p < allPRs.length; p++) {
-      var key = allPRs[p].project + "::" + allPRs[p].head;
-      prByProjectHead[key] = allPRs[p].number;
+    for (var p = 0; p < filteredPRs.length; p++) {
+      var key = filteredPRs[p].project + "::" + filteredPRs[p].head;
+      prByProjectHead[key] = filteredPRs[p].number;
     }
-    for (var j = 0; j < allPRs.length; j++) {
-      var pr = allPRs[j];
+    for (var j = 0; j < filteredPRs.length; j++) {
+      var pr = filteredPRs[j];
       var enrichment = pr.enrichment;
       var isStacked = pr.base && pr.base !== "main" && pr.base !== "master";
       html += '<div class="pr-card' + (isStacked ? ' pr-stacked' : '') + '">';
