@@ -60,21 +60,24 @@ For target issue `#X`:
    - Review decision must not be `CHANGES_REQUESTED`
    If any fail: stop with `blocked` and report specific PR reasons.
 
-5. **Merge dependency PRs in deterministic order**
+5. **Merge dependency PRs in deterministic order and close their issues**
    - Sort by dependency issue number ascending.
-   - For each PR in order:
+   - For each dependency pair `(issue #D, PR #P)` in order:
      ```bash
      gh pr merge <pr-number> --squash
+     gh issue close <dep-issue-number> --comment "Closed via oh-join after merging PR #<pr-number> into <base-branch>."
      ```
+   - Why explicit close: PRs merged into non-default branches do NOT auto-close issues, even with `Closes #N`.
    - On failure:
      - Stop immediately
-     - Report merged PRs vs failed PR
+     - Report merged PRs/issues vs failed PR
      - `signal_completion(status: "error", error: "...")`
 
 6. **Update target issue dependencies**
    - Re-read target issue body.
-   - Remove merged dependency issue numbers from `Depends on:` lines.
-   - Keep still-open dependencies if any remain.
+   - Rewrite `Depends on:` lines to contain ONLY unresolved deps.
+   - Do NOT leave merged dependency references in strikethrough (`~~#N~~`) form — remove them completely.
+   - If all deps are resolved, replace with: `**Depends on:** none (resolved by oh-join)`
    - Append/update a machine section:
      ```md
      <!-- oh-join -->
@@ -108,6 +111,7 @@ For target issue `#X`:
 - Never continue after first merge failure.
 - Never delete dependency context; only remove deps that are now merged.
 - Always include exact issue/PR numbers in reports.
+- Never rely on PR auto-close when merging into non-default branches; explicitly close dependency issues.
 
 ## Exit Conditions
 

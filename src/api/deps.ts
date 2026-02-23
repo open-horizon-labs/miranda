@@ -15,12 +15,19 @@ export function parseDependencies(body: string | null | undefined): number[] {
 
   const deps = new Set<number>();
 
+  // Ignore text that should not count as active dependencies:
+  // - Markdown strikethrough blocks (~~...~~)
+  // - HTML comments (machine metadata sections)
+  const normalizedBody = body
+    .replace(/~~[\s\S]*?~~/g, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
+
   // Match "Depends on" with optional bold/italic markers and optional colon,
   // followed by one or more #N references separated by commas, "and", or whitespace
   const pattern = /\*{0,2}Depends on:?\*{0,2}:?\s*(.+)/gi;
 
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(body)) !== null) {
+  while ((match = pattern.exec(normalizedBody)) !== null) {
     const rest = match[1];
     // Extract all #N references from the remainder of the line
     const refs = rest.match(/#(\d+)/g);
