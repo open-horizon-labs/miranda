@@ -934,10 +934,18 @@ a.pr-status:active {
   line-height: 1.5;
   color: var(--tg-theme-hint-color);
   margin-top: 8px;
+  white-space: pre-wrap;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  padding: var(--gap);
+  overflow-x: auto;
 }
 
 .scheduler-status:empty {
   display: none;
+  padding: 0;
+  background: none;
 }
 
 .scheduler-badge {
