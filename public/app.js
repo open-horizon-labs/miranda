@@ -989,6 +989,9 @@
         if (data.alreadyRunning && data.alreadyRunning.length > 0) {
           parts.push("Already running: " + data.alreadyRunning.map(function (n) { return "#" + n; }).join(", "));
         }
+        if (data.hasPR && data.hasPR.length > 0) {
+          parts.push("Has PR: " + data.hasPR.map(function (n) { return "#" + n; }).join(", "));
+        }
         if (data.blocked && data.blocked.length > 0) {
           parts.push("Blocked (max concurrent): " + data.blocked.map(function (n) { return "#" + n; }).join(", "));
         }
@@ -1030,6 +1033,9 @@
           }
           if (d.filteredUnblocked && d.filteredUnblocked.length > 0) {
             dbg.push("Will auto-start: " + d.filteredUnblocked.map(function (s) { return "#" + s.issue + " on #" + s.baseDep; }).join(", "));
+          }
+          if (d.skippedHasPR && d.skippedHasPR.length > 0) {
+            dbg.push("Skipped (has PR): " + d.skippedHasPR.map(function (s) { return "#" + s.issue + " (PR #" + s.pr + ")"; }).join(", "));
           }
           $schedulerStatus.textContent = dbg.join("\n");
           $schedulerStatus.style.whiteSpace = "pre-wrap";

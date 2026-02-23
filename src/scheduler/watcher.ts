@@ -190,6 +190,7 @@ interface PollResult {
   stacked: Array<{ issue: number; baseDep: number; baseBranch: string }>;
   alreadyRunning: number[];
   blocked: number[];
+  hasPR: number[];
   cycles: number[][];
   debug?: SchedulerDebug;
 }
@@ -202,6 +203,7 @@ interface SchedulerDebug {
   stackUnblocked: Array<{ issue: number; baseDep: number }>;
   queued: number[];
   filteredUnblocked: Array<{ issue: number; baseDep: number }>;
+  skippedHasPR: Array<{ issue: number; pr: number }>;
 }
 
 interface DepCandidateDebug {
@@ -227,7 +229,7 @@ interface DepCandidateDebug {
  * 4. Start oh-task with --base set to dep's branch
  */
 async function pollProject(projectName: string, manual = false): Promise<PollResult> {
-  const result: PollResult = { stacked: [], alreadyRunning: [], blocked: [], cycles: [] };
+  const result: PollResult = { stacked: [], alreadyRunning: [], blocked: [], cycles: [], hasPR: [] };
 
   // Resolve project path
   const projects = await scanProjects();
@@ -323,6 +325,7 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
     stackUnblocked: allStackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
     queued: [...queued],
     filteredUnblocked: stackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
+    skippedHasPR: [],
   };
 
   if (stackUnblocked.length === 0) {
@@ -355,6 +358,15 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
     const baseBranch = branchMap.get(baseDep);
     if (!baseBranch) continue;
 
+    // Skip issues that already have an open PR
+    const existingPR = findLinkedPR(openPRs, issueNumber);
+    if (existingPR) {
+      result.hasPR.push(issueNumber);
+      result.debug!.skippedHasPR.push({ issue: issueNumber, pr: existingPR.number });
+      state.scheduledChains.delete(issueNumber);
+      continue;
+    }
+
     const spawned = await trySpawnIssue(projectName, project.path, issueNumber, chatId, baseBranch);
     if (spawned === "already_running") {
       result.alreadyRunning.push(issueNumber);
@@ -370,7 +382,7 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   }
 
   // Report slot-blocked issues
-  const startedSet = new Set([...result.stacked.map((s) => s.issue), ...result.alreadyRunning]);
+  const startedSet = new Set([...result.stacked.map((s) => s.issue), ...result.alreadyRunning, ...result.hasPR]);
   result.blocked = stackUnblocked.map((s) => s.issueNumber).filter((n) => !startedSet.has(n));
 
   // Check tree completion
