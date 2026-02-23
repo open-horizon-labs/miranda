@@ -953,13 +953,6 @@
     $schedulerBadge.className = "section-badge scheduler-badge " + (enabled ? "on" : "off");
     $schedulerBadge.style.display = "";
 
-    if (projState && projState.lastCheckAt) {
-      var ago = Math.round((Date.now() - projState.lastCheckAt) / 1000);
-      var agoStr = ago < 60 ? ago + "s ago" : Math.round(ago / 60) + "m ago";
-      $schedulerStatus.textContent = "Last check: " + agoStr;
-    } else {
-      $schedulerStatus.textContent = enabled ? "Waiting for first poll\u2026" : "";
-    }
   }
 
   $schedulerToggle.addEventListener("change", function () {
