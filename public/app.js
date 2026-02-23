@@ -849,13 +849,22 @@
               mergeBtn.addEventListener('click', handleMergeClick);
               actions.appendChild(mergeBtn);
             } else if (issue.pr.mergeable === false) {
-              var conflictsBtn = document.createElement('button');
-              conflictsBtn.className = 'btn btn-danger btn-compact';
-              conflictsBtn.textContent = 'Fix Conflicts';
-              conflictsBtn.setAttribute('data-pr', issue.pr.number);
-              conflictsBtn.setAttribute('data-project', selectedProject);
-              conflictsBtn.addEventListener('click', handleFixConflictsClick);
-              actions.appendChild(conflictsBtn);
+              var factoryConflictSessionId = 'oh-conflict-' + selectedProject + '-' + issue.pr.number;
+              var factoryConflictActive = sessions.some(function (s) { return s.taskId === factoryConflictSessionId; });
+              if (factoryConflictActive) {
+                var conflictsSpan = document.createElement('span');
+                conflictsSpan.className = 'btn btn-in-progress btn-compact';
+                conflictsSpan.textContent = 'Fixing Conflicts\u2026';
+                actions.appendChild(conflictsSpan);
+              } else {
+                var conflictsBtn = document.createElement('button');
+                conflictsBtn.className = 'btn btn-danger btn-compact';
+                conflictsBtn.textContent = 'Fix Conflicts';
+                conflictsBtn.setAttribute('data-pr', issue.pr.number);
+                conflictsBtn.setAttribute('data-project', selectedProject);
+                conflictsBtn.addEventListener('click', handleFixConflictsClick);
+                actions.appendChild(conflictsBtn);
+              }
             } else {
               var checkingSpan = document.createElement('span');
               checkingSpan.className = 'btn btn-merge-disabled btn-compact';
@@ -1098,7 +1107,13 @@
       }
       if (enrichment && enrichment.ci) {
         if (enrichment.ci.state === 'failure') {
-          html += '<span class="pr-ci ci-failure clickable" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="fix-ci" title="' + escAttr(ciTooltip(enrichment.ci)) + '">' + ciIndicator(enrichment.ci.state) + '</span>';
+          var ciSessionId = 'oh-ci-' + pr.project + '-' + pr.number;
+          var ciActive = sessions.some(function (s) { return s.taskId === ciSessionId; });
+          if (ciActive) {
+            html += '<span class="pr-ci ci-failure" title="CI fix in progress\u2026">' + ciIndicator(enrichment.ci.state) + '\u2026</span>';
+          } else {
+            html += '<span class="pr-ci ci-failure clickable" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="fix-ci" title="' + escAttr(ciTooltip(enrichment.ci)) + '">' + ciIndicator(enrichment.ci.state) + '</span>';
+          }
         } else {
           html += '<span class="pr-ci ci-' + enrichment.ci.state + '" title="' + escAttr(ciTooltip(enrichment.ci)) + '">' + ciIndicator(enrichment.ci.state) + '</span>';
         }
@@ -1113,7 +1128,13 @@
       if (pr.mergeable === true) {
         html += '<button class="btn btn-merge" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '">Merge</button>';
       } else if (pr.mergeable === false) {
-        html += '<button class="btn btn-danger" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="fix-conflicts">Fix Conflicts</button>';
+        var conflictSessionId = 'oh-conflict-' + pr.project + '-' + pr.number;
+        var conflictActive = sessions.some(function (s) { return s.taskId === conflictSessionId; });
+        if (conflictActive) {
+          html += '<span class="btn btn-in-progress">Fixing Conflicts\u2026</span>';
+        } else {
+          html += '<button class="btn btn-danger" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="fix-conflicts">Fix Conflicts</button>';
+        }
       } else {
         html += '<span class="btn btn-merge-disabled">Checking\u2026</span>';
       }
@@ -1172,38 +1193,44 @@
   // Action handlers
   // ---------------------------------------------------------------------------
 
-  function commentAndNotes(project, prNum, comment, btn, label) {
-    btn.disabled = true;
-    btn.textContent = 'Starting\u2026';
-    api('POST', '/api/projects/' + encodeURIComponent(project) + '/prs/' + prNum + '/comment', { body: comment })
-      .then(function () {
-        return api('POST', '/api/projects/' + encodeURIComponent(project) + '/prs/' + prNum + '/notes');
-      })
-      .then(function () {
-        showToast(label + ' started for PR #' + prNum, 'success');
-        return loadSessions().then(function () { renderAllPRs(); });
-      })
-      .catch(function (err) {
-        btn.disabled = false;
-        btn.textContent = label;
-        showToast(err.message, 'error');
-      });
-  }
-
   function handleFixConflictsClick(e) {
     var prNum = e.currentTarget.getAttribute('data-pr');
     var project = e.currentTarget.getAttribute('data-project') || selectedProject;
     if (!prNum || !project) return;
-    if (!confirm('Comment "Resolve conflicts" and start oh-notes for PR #' + prNum + '?')) return;
-    commentAndNotes(project, prNum, 'Resolve conflicts', e.currentTarget, 'Fix Conflicts');
+    if (!confirm('Start conflict resolution for PR #' + prNum + '?')) return;
+    var btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Starting\u2026';
+    api('POST', '/api/projects/' + encodeURIComponent(project) + '/prs/' + prNum + '/fix-conflicts')
+      .then(function () {
+        showToast('Conflict resolution started for PR #' + prNum, 'success');
+        return loadSessions().then(function () { renderAllPRs(); });
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Fix Conflicts';
+        showToast(err.message, 'error');
+      });
   }
 
   function handleFixCiClick(e) {
     var prNum = e.currentTarget.getAttribute('data-pr');
     var project = e.currentTarget.getAttribute('data-project') || selectedProject;
     if (!prNum || !project) return;
-    if (!confirm('Comment "Fix CI" and start oh-notes for PR #' + prNum + '?')) return;
-    commentAndNotes(project, prNum, 'Fix CI', e.currentTarget, 'Fix CI');
+    if (!confirm('Start CI fix for PR #' + prNum + '?')) return;
+    var btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Starting\u2026';
+    api('POST', '/api/projects/' + encodeURIComponent(project) + '/prs/' + prNum + '/fix-ci')
+      .then(function () {
+        showToast('CI fix started for PR #' + prNum, 'success');
+        return loadSessions().then(function () { renderAllPRs(); });
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Fix CI';
+        showToast(err.message, 'error');
+      });
   }
 
   function handleStartClick(e) {

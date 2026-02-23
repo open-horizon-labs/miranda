@@ -167,6 +167,8 @@ export function registerCommands(bot: Bot<Context>, shutdown: ShutdownFn): void 
   bot.command("ohtask", handleOhTask);
   bot.command("ohplan", handleOhPlan);
   bot.command("ohreview", handleOhReview);
+  bot.command("ohci", handleOhCi);
+  bot.command("ohconflict", handleOhConflict);
   bot.command("newproject", handleNewProject);
   bot.command("pull", handlePull);
   bot.command("selfupdate", handleSelfUpdate);
@@ -197,6 +199,8 @@ I give voice to the Primer. Commands:
 /ohmerge <project> - Batch merge GitHub issue PRs
 /ohnotes <project> <pr> - Address PR feedback
 /ohreview <project> <pr> - Review PR against issue
+/ohci <project> <pr> - Fix CI failures on PR
+/ohconflict <project> <pr> - Resolve merge conflicts on PR
 /status - Show active sessions
 /stop <session> - Stop a session
 /cleanup - Remove orphaned sessions
@@ -631,6 +635,151 @@ Addressing GitHub issue PR feedback...`,
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await ctx.reply(`Failed to start oh-notes: ${message}`);
+  }
+}
+
+
+async function handleOhCi(ctx: Context): Promise<void> {
+  const args = ctx.match?.toString().trim();
+  if (!args) {
+    await ctx.reply("Usage: /ohci <project> <pr-number>");
+    return;
+  }
+
+  const parts = args.split(/\s+/);
+  if (parts.length !== 2) {
+    await ctx.reply("Usage: /ohci <project> <pr-number>\n\nExample: /ohci miranda 42");
+    return;
+  }
+
+  const [projectName, prNumber] = parts;
+
+  if (!/^\d+$/.test(prNumber)) {
+    await ctx.reply("Error: PR number must be numeric (e.g., /ohci miranda 42)");
+    return;
+  }
+
+  const projectPath = `${config.projectsDir}/${projectName}`;
+  const projects = await scanProjects();
+  const projectExists = projects.some((p) => p.name === projectName);
+  if (!projectExists) {
+    await ctx.reply(`Error: Project \`${projectName}\` not found in ${config.projectsDir}`, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  const sessionKey = `oh-ci-${projectName}-${prNumber}`;
+  const existing = getSession(sessionKey);
+  if (existing) {
+    await ctx.reply(`oh-ci session for ${projectName} PR #${prNumber} already exists (${existing.status})`);
+    return;
+  }
+
+  const chatId = ctx.chat?.id;
+  if (!chatId) {
+    await ctx.reply("Error: Could not determine chat ID");
+    return;
+  }
+
+  await ctx.reply(`Starting oh-ci for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
+
+  try {
+    const sessionId = await spawnSession("oh-ci", prNumber, chatId, { projectPath, projectName });
+
+    const session: Session = {
+      taskId: sessionKey,
+      sessionId,
+      skill: "oh-ci",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    const keyboard = new InlineKeyboard().text(`Stop ${sessionKey}`, `stop:${sessionKey}`);
+    await ctx.reply(
+      `oh-ci running for ${projectName} PR #${prNumber}
+Session: \`${sessionId}\`
+
+Diagnosing and fixing CI failures...`,
+      { parse_mode: "Markdown", reply_markup: keyboard }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`Failed to start oh-ci: ${message}`);
+  }
+}
+
+async function handleOhConflict(ctx: Context): Promise<void> {
+  const args = ctx.match?.toString().trim();
+  if (!args) {
+    await ctx.reply("Usage: /ohconflict <project> <pr-number>");
+    return;
+  }
+
+  const parts = args.split(/\s+/);
+  if (parts.length !== 2) {
+    await ctx.reply("Usage: /ohconflict <project> <pr-number>\n\nExample: /ohconflict miranda 42");
+    return;
+  }
+
+  const [projectName, prNumber] = parts;
+
+  if (!/^\d+$/.test(prNumber)) {
+    await ctx.reply("Error: PR number must be numeric (e.g., /ohconflict miranda 42)");
+    return;
+  }
+
+  const projectPath = `${config.projectsDir}/${projectName}`;
+  const projects = await scanProjects();
+  const projectExists = projects.some((p) => p.name === projectName);
+  if (!projectExists) {
+    await ctx.reply(`Error: Project \`${projectName}\` not found in ${config.projectsDir}`, {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  const sessionKey = `oh-conflict-${projectName}-${prNumber}`;
+  const existing = getSession(sessionKey);
+  if (existing) {
+    await ctx.reply(`oh-conflict session for ${projectName} PR #${prNumber} already exists (${existing.status})`);
+    return;
+  }
+
+  const chatId = ctx.chat?.id;
+  if (!chatId) {
+    await ctx.reply("Error: Could not determine chat ID");
+    return;
+  }
+
+  await ctx.reply(`Starting oh-conflict for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
+
+  try {
+    const sessionId = await spawnSession("oh-conflict", prNumber, chatId, { projectPath, projectName });
+
+    const session: Session = {
+      taskId: sessionKey,
+      sessionId,
+      skill: "oh-conflict",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    const keyboard = new InlineKeyboard().text(`Stop ${sessionKey}`, `stop:${sessionKey}`);
+    await ctx.reply(
+      `oh-conflict running for ${projectName} PR #${prNumber}
+Session: \`${sessionId}\`
+
+Resolving merge conflicts...`,
+      { parse_mode: "Markdown", reply_markup: keyboard }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`Failed to start oh-conflict: ${message}`);
   }
 }
 

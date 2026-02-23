@@ -649,6 +649,126 @@ async function handleStartNotes(
 }
 
 /**
+ * POST /api/projects/:name/prs/:num/fix-ci — Kick off oh-ci for a PR.
+ */
+async function handleStartCI(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  projectName: string,
+  prNumber: string,
+  authedUser: TelegramUser
+): Promise<void> {
+  const projectPath = await resolveProject(projectName);
+  if (!projectPath) {
+    json(res, 404, { error: `Project "${projectName}" not found` });
+    return;
+  }
+
+  try {
+    await pullProject(projectPath);
+  } catch {
+    // Best-effort pull
+  }
+
+  const chatId = authedUser.id;
+  const sessionKey = `oh-ci-${projectName}-${prNumber}`;
+  const existing = getSession(sessionKey);
+  if (existing) {
+    json(res, 409, {
+      error: `CI fix session already exists for ${projectName} PR #${prNumber}`,
+      session: { taskId: existing.taskId, status: existing.status },
+    });
+    return;
+  }
+
+  try {
+    const sessionId = await spawnSession("oh-ci", prNumber, chatId, {
+      projectPath,
+      projectName,
+    });
+
+    const session: Session = {
+      taskId: sessionKey,
+      sessionId,
+      skill: "oh-ci",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    json(res, 201, {
+      taskId: sessionKey,
+      sessionId,
+      prNumber: parseInt(prNumber, 10),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
+ * POST /api/projects/:name/prs/:num/fix-conflicts — Kick off oh-conflict for a PR.
+ */
+async function handleStartConflict(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  projectName: string,
+  prNumber: string,
+  authedUser: TelegramUser
+): Promise<void> {
+  const projectPath = await resolveProject(projectName);
+  if (!projectPath) {
+    json(res, 404, { error: `Project "${projectName}" not found` });
+    return;
+  }
+
+  try {
+    await pullProject(projectPath);
+  } catch {
+    // Best-effort pull
+  }
+
+  const chatId = authedUser.id;
+  const sessionKey = `oh-conflict-${projectName}-${prNumber}`;
+  const existing = getSession(sessionKey);
+  if (existing) {
+    json(res, 409, {
+      error: `Conflict resolution session already exists for ${projectName} PR #${prNumber}`,
+      session: { taskId: existing.taskId, status: existing.status },
+    });
+    return;
+  }
+
+  try {
+    const sessionId = await spawnSession("oh-conflict", prNumber, chatId, {
+      projectPath,
+      projectName,
+    });
+
+    const session: Session = {
+      taskId: sessionKey,
+      sessionId,
+      skill: "oh-conflict",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    json(res, 201, {
+      taskId: sessionKey,
+      sessionId,
+      prNumber: parseInt(prNumber, 10),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
  * POST /api/projects/:name/plan — Kick off oh-plan for a project.
  * Body: { description: string }
  */
@@ -1239,6 +1359,20 @@ export async function routeApi(
   const notesMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/notes$/);
   if (notesMatch && method === "POST") {
     await handleStartNotes(req, res, decodeURIComponent(notesMatch[1]), notesMatch[2], authedUser);
+    return true;
+  }
+
+  // POST /api/projects/:name/prs/:num/fix-ci
+  const fixCiMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/fix-ci$/);
+  if (fixCiMatch && method === "POST") {
+    await handleStartCI(req, res, decodeURIComponent(fixCiMatch[1]), fixCiMatch[2], authedUser);
+    return true;
+  }
+
+  // POST /api/projects/:name/prs/:num/fix-conflicts
+  const fixConflictMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/fix-conflicts$/);
+  if (fixConflictMatch && method === "POST") {
+    await handleStartConflict(req, res, decodeURIComponent(fixConflictMatch[1]), fixConflictMatch[2], authedUser);
     return true;
   }
 

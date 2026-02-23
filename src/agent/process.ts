@@ -258,6 +258,28 @@ function buildSkillArgs(skill: SkillType, options: SkillOptions): string {
       validateIdSafe(projectName, "projectName");
       return taskId;
     }
+    case "oh-ci": {
+      if (!taskId) {
+        throw new Error("spawnAgent: PR number is required for oh-ci skill");
+      }
+      if (!projectName) {
+        throw new Error("spawnAgent: projectName is required for oh-ci skill");
+      }
+      validateIdSafe(taskId, "prNumber");
+      validateIdSafe(projectName, "projectName");
+      return taskId;
+    }
+    case "oh-conflict": {
+      if (!taskId) {
+        throw new Error("spawnAgent: PR number is required for oh-conflict skill");
+      }
+      if (!projectName) {
+        throw new Error("spawnAgent: projectName is required for oh-conflict skill");
+      }
+      validateIdSafe(taskId, "prNumber");
+      validateIdSafe(projectName, "projectName");
+      return taskId;
+    }
     case "oh-plan": {
       if (!taskId) {
         throw new Error("spawnAgent: description is required for oh-plan skill");
