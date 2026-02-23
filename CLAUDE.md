@@ -130,10 +130,10 @@ Clones a GitHub repository and initializes development tools in one step.
 
 **What happens:**
 1. Clones to `$PROJECTS_DIR/<repo-name>` via `gh repo clone`
-2. Runs `sg init` (superego)
-
+2. Runs `ba init`, `sg init`, `wm init` (skips any already initialized)
 **Notes:**
 - GitHub only (uses `gh` CLI)
+- Skips tool init when directory already exists (`.ba/`, `.superego/`, `.wm/`)
 - Reports partial success if clone works but init fails
 - 10-minute clone timeout, 30-second per-tool init timeout
 

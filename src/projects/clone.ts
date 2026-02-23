@@ -73,10 +73,14 @@ export interface CloneResult {
   projectPath?: string;
   repoName?: string;
   error?: string;
+  /** Tools that were freshly initialized */
+  initialized?: string[];
+  /** Tools that were already present and skipped */
+  skipped?: string[];
 }
 
 /**
- * Clone a repository and initialize ba and sg.
+ * Clone a repository and initialize ba, sg, and wm.
  *
  * **GitHub Only**: This function only supports GitHub repositories.
  * Uses `gh repo clone` which requires GitHub URLs.
@@ -136,32 +140,51 @@ export async function cloneAndInit(repoRef: string): Promise<CloneResult> {
       error: `Project directory is not accessible after clone: ${projectPath}`,
     };
   }
-  // Initialize tools with timeouts
-  const initErrors: string[] = [];
+
+  // Initialize tools, skipping any already present
+  const tools = [
+    { name: "ba", dir: ".ba" },
+    { name: "sg", dir: ".superego" },
+    { name: "wm", dir: ".wm" },
+  ];
   const initTimeout = 30000; // 30 second timeout for each init
+  const initErrors: string[] = [];
+  const initialized: string[] = [];
+  const skipped: string[] = [];
 
-  try {
-    await execFileAsync("ba", ["init"], { cwd: projectPath, timeout: initTimeout });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    initErrors.push(`ba init failed: ${message}`);
+  for (const tool of tools) {
+    const toolDir = join(projectPath, tool.dir);
+    let alreadyExists = false;
+    try {
+      await access(toolDir, constants.F_OK);
+      alreadyExists = true;
+    } catch {
+      // Directory doesn't exist - needs init
+    }
+
+    if (alreadyExists) {
+      skipped.push(tool.name);
+      continue;
+    }
+
+    try {
+      await execFileAsync(tool.name, ["init"], { cwd: projectPath, timeout: initTimeout });
+      initialized.push(tool.name);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      initErrors.push(`${tool.name} init failed: ${message}`);
+    }
   }
-
-  try {
-    await execFileAsync("sg", ["init"], { cwd: projectPath, timeout: initTimeout });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    initErrors.push(`sg init failed: ${message}`);
-  }
-
   if (initErrors.length > 0) {
     return {
       success: true,
       projectPath,
       repoName: parsed.repo,
+      initialized,
+      skipped,
       error: `Cloned but init had issues:\n${initErrors.join("\n")}`,
     };
   }
 
-  return { success: true, projectPath, repoName: parsed.repo };
+  return { success: true, projectPath, repoName: parsed.repo, initialized, skipped };
 }
