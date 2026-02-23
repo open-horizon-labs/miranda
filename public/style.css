@@ -580,6 +580,11 @@ a.pr-status:active {
   cursor: default;
 }
 
+.btn-update {
+  background: #5e5ce6;
+  color: #fff;
+}
+
 .btn-in-progress {
   background: rgba(48, 209, 88, 0.15);
   color: #30d158;

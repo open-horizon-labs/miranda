@@ -30,6 +30,8 @@ export interface GitHubPR {
   body: string | null;
   /** SHA of the PR head commit (for CI status lookups). */
   headSha: string;
+  /** GitHub merge state: BEHIND, BLOCKED, CLEAN, DIRTY, DRAFT, HAS_HOOKS, UNKNOWN, UNSTABLE. */
+  mergeStateStatus: string | null;
 }
 
 export interface GitHubMergeResult {
@@ -226,6 +228,7 @@ export async function getOpenPRs(
         head: item.head.ref,
         headSha: item.head.sha,
         body: item.body,
+        mergeStateStatus: null,
       });
     }
 
@@ -237,10 +240,11 @@ export async function getOpenPRs(
   await Promise.all(
     prs.map(async (pr) => {
       try {
-        const detail = await githubFetch<{ mergeable: boolean | null }>(
+        const detail = await githubFetch<{ mergeable: boolean | null; merge_state_status?: string }>(
           `/repos/${owner}/${repo}/pulls/${pr.number}`
         );
         pr.mergeable = detail.mergeable;
+        pr.mergeStateStatus = detail.merge_state_status ?? null;
       } catch {
         // Best-effort — leave as null
       }
@@ -272,6 +276,22 @@ export async function mergePR(
     const message = error instanceof Error ? error.message : String(error);
     return { merged: false, message };
   }
+}
+
+/**
+ * Update a PR branch (merge base into head).
+ * Requires the repo to have "Allow update branch" enabled.
+ */
+export async function updatePRBranch(
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<{ message: string; url?: string }> {
+  const result = await githubFetch<{ message: string; url?: string }>(
+    `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
+    { method: "PUT" }
+  );
+  return result;
 }
 
 /**

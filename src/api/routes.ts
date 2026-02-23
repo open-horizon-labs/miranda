@@ -14,6 +14,7 @@ import {
   getOpenIssues,
   getOpenPRs,
   mergePR,
+  updatePRBranch,
   commentOnPR,
   closeIssue,
   findLinkedPR,
@@ -662,6 +663,41 @@ async function handleMergePR(
 }
 
 /**
+ * POST /api/projects/:name/prs/:num/update-branch — Update PR branch (merge base into head).
+ */
+async function handleUpdateBranch(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  projectName: string,
+  prNumber: string
+): Promise<void> {
+  const projectPath = await resolveProject(projectName);
+  if (!projectPath) {
+    json(res, 404, { error: `Project "${projectName}" not found` });
+    return;
+  }
+
+  const num = parseInt(prNumber, 10);
+  if (isNaN(num) || num <= 0) {
+    json(res, 400, { error: "Invalid PR number" });
+    return;
+  }
+
+  try {
+    const { owner, repo } = await getRepoInfo(projectPath);
+    const result = await updatePRBranch(owner, repo, num);
+    json(res, 200, result);
+  } catch (error) {
+    if (error instanceof GitHubRateLimitError) {
+      json(res, 429, { error: error.message });
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
  * POST /api/projects/:name/prs/:num/comment — Post a review comment on a PR.
  */
 async function handleCommentPR(
@@ -831,6 +867,7 @@ async function handleGetAllPRs(
       url: string;
       base: string;
       head: string;
+      mergeStateStatus: string | null;
       linkedIssues: number[];
       enrichment: PREnrichment | null;
     }> = [];
@@ -858,6 +895,7 @@ async function handleGetAllPRs(
           head: pr.head,
           linkedIssues: extractLinkedIssueNumbers(pr),
           enrichment: null,
+          mergeStateStatus: pr.mergeStateStatus,
         });
 
         if (owner && repo) {
@@ -1064,6 +1102,13 @@ export async function routeApi(
   const mergeMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/merge$/);
   if (mergeMatch && method === "POST") {
     await handleMergePR(req, res, decodeURIComponent(mergeMatch[1]), mergeMatch[2]);
+    return true;
+  }
+
+  // POST /api/projects/:name/prs/:num/update-branch
+  const updateBranchMatch = pathname.match(/^\/api\/projects\/([^/]+)\/prs\/(\d+)\/update-branch$/);
+  if (updateBranchMatch && method === "POST") {
+    await handleUpdateBranch(req, res, decodeURIComponent(updateBranchMatch[1]), updateBranchMatch[2]);
     return true;
   }
 

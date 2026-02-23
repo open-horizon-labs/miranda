@@ -674,6 +674,9 @@
       } else {
         html += '<span class="btn btn-merge-disabled">Checking\u2026</span>';
       }
+      if (pr.mergeStateStatus === 'BEHIND') {
+        html += '<button class="btn btn-update" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="update-branch">Update</button>';
+      }
       html += '<button class="btn btn-secondary" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="comment">Comment</button>';
       // Notes button (oh-notes)
       var notesSessionId = "oh-notes-" + pr.project + "-" + pr.number;
@@ -700,6 +703,10 @@
     var notesBtns = $allPrsList.querySelectorAll('[data-action="notes"]');
     for (var nb = 0; nb < notesBtns.length; nb++) {
       notesBtns[nb].addEventListener("click", handleNotesClick);
+    }
+    var updateBtns = $allPrsList.querySelectorAll('[data-action="update-branch"]');
+    for (var ub = 0; ub < updateBtns.length; ub++) {
+      updateBtns[ub].addEventListener("click", handleUpdateBranchClick);
     }
     var prNumLinks = $allPrsList.querySelectorAll(".pr-card-number");
     for (var n = 0; n < prNumLinks.length; n++) {
@@ -784,6 +791,26 @@
       .catch(function (err) {
         btn.disabled = false;
         btn.textContent = originalText;
+        showToast(err.message, "error");
+      });
+  }
+
+  function handleUpdateBranchClick(e) {
+    var prNum = e.currentTarget.getAttribute("data-pr");
+    var project = e.currentTarget.getAttribute("data-project") || selectedProject;
+    if (!prNum || !project) return;
+    var btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Updating\u2026";
+    api("POST", "/api/projects/" + encodeURIComponent(project) + "/prs/" + prNum + "/update-branch")
+      .then(function () {
+        btn.textContent = "Updated \u2713";
+        showToast("PR #" + prNum + " branch updated", "success");
+        setTimeout(function () { loadAllPRs(); }, 2000);
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = "Update";
         showToast(err.message, "error");
       });
   }
