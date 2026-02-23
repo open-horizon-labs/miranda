@@ -921,6 +921,13 @@
                 joinBtn.addEventListener('click', handleJoinClick);
                 actions.appendChild(joinBtn);
               }
+
+              var closeBtn = document.createElement('button');
+              closeBtn.className = 'btn btn-danger btn-compact';
+              closeBtn.textContent = 'Close';
+              closeBtn.setAttribute('data-issue', issue.number);
+              closeBtn.addEventListener('click', handleCloseClick);
+              actions.appendChild(closeBtn);
             }
 
             var isQueued = queuedSet[issue.number];
