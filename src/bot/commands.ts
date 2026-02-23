@@ -1337,13 +1337,14 @@ Examples:
       { parse_mode: "Markdown" }
     );
   } else {
-    await ctx.reply(
-      `Project \`${result.repoName}\` ready
-
-Path: \`${result.projectPath}\`
-Initialized: ba, sg, wm`,
-      { parse_mode: "Markdown" }
-    );
+    const parts = [`Project \`${result.repoName}\` ready\n\nPath: \`${result.projectPath}\``];
+    if (result.initialized && result.initialized.length > 0) {
+      parts.push(`Initialized: ${result.initialized.join(", ")}`);
+    }
+    if (result.skipped && result.skipped.length > 0) {
+      parts.push(`Already present: ${result.skipped.join(", ")}`);
+    }
+    await ctx.reply(parts.join("\n"), { parse_mode: "Markdown" });
   }
 }
 
