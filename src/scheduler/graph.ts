@@ -155,3 +155,100 @@ export function detectCycles(graph: DependencyGraph): number[][] {
 
 	return cycles;
 }
+
+// ---------------------------------------------------------------------------
+// Factory phase labels
+// ---------------------------------------------------------------------------
+
+/** Ordered factory phases. Lower index = earlier phase. */
+const FACTORY_PHASE_ORDER: readonly string[] = ["build", "audit", "critique"];
+
+export interface FactoryPhase {
+	app: string;
+	phase: string;
+	phaseIndex: number;
+}
+
+/**
+ * Parse a factory phase label.
+ * Labels follow the pattern `factory:<app>:<phase>` (e.g., `factory:dm:audit`).
+ * Returns null if the label is not a factory phase label.
+ */
+export function parseFactoryLabel(label: string): FactoryPhase | null {
+	const parts = label.split(":");
+	if (parts.length !== 3 || parts[0] !== "factory") return null;
+	const [, app, phase] = parts;
+	const phaseIndex = FACTORY_PHASE_ORDER.indexOf(phase);
+	if (phaseIndex === -1) return null;
+	return { app, phase, phaseIndex };
+}
+
+/**
+ * Find the factory phase for an issue from its labels.
+ * Returns null if the issue has no factory phase label.
+ */
+export function getIssueFactoryPhase(labels: string[]): FactoryPhase | null {
+	for (const label of labels) {
+		const phase = parseFactoryLabel(label);
+		if (phase) return phase;
+	}
+	return null;
+}
+
+/**
+ * Filter stack-unblocked issues by factory phase ordering.
+ *
+ * An issue in phase N is blocked if there are ANY open issues in
+ * an earlier phase (< N) for the same factory app.
+ *
+ * This handles the evaluation-loop pattern: critique (phase 2) is
+ * blocked until ALL audit-phase issues (phase 1) — including
+ * dynamically spawned fix issues — are resolved.
+ *
+ * Non-factory issues pass through unchanged.
+ */
+export function filterByFactoryPhase(
+	candidates: StackUnblocked[],
+	allIssues: Array<{ number: number; labels: string[] }>,
+	openIssueNumbers: Set<number>,
+): StackUnblocked[] {
+	// Build a map: factory app → phase index → set of open issue numbers
+	const phaseMap = new Map<string, Map<number, Set<number>>>();
+
+	for (const issue of allIssues) {
+		if (!openIssueNumbers.has(issue.number)) continue;
+		const fp = getIssueFactoryPhase(issue.labels);
+		if (!fp) continue;
+
+		let appPhases = phaseMap.get(fp.app);
+		if (!appPhases) {
+			appPhases = new Map();
+			phaseMap.set(fp.app, appPhases);
+		}
+		let issueSet = appPhases.get(fp.phaseIndex);
+		if (!issueSet) {
+			issueSet = new Set();
+			appPhases.set(fp.phaseIndex, issueSet);
+		}
+		issueSet.add(issue.number);
+	}
+
+	// Filter candidates: block if earlier phase has open issues
+	return candidates.filter((candidate) => {
+		const issue = allIssues.find((i) => i.number === candidate.issueNumber);
+		if (!issue) return true; // not in our issue list, pass through
+
+		const fp = getIssueFactoryPhase(issue.labels);
+		if (!fp) return true; // not a factory issue, pass through
+
+		const appPhases = phaseMap.get(fp.app);
+		if (!appPhases) return true;
+
+		// Check all earlier phases for open issues
+		for (let i = 0; i < fp.phaseIndex; i++) {
+			const earlier = appPhases.get(i);
+			if (earlier && earlier.size > 0) return false; // earlier phase still active
+		}
+		return true;
+	});
+}

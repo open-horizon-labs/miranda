@@ -63,6 +63,7 @@
   var $allPrsCount = document.getElementById("all-prs-count");
   var $issuesSection = document.getElementById("issues-section");
   var $issuesTree = document.getElementById("issues-tree");
+  var $factoryPipeline = document.getElementById("factory-pipeline");
   var $issuesCount = document.getElementById("issues-count");
   var $refreshBtn = document.getElementById("refresh-btn");
   var $loadingBar = document.getElementById("loading-bar");
@@ -582,10 +583,100 @@
     return li;
   }
 
+  var FACTORY_PHASES = ['build', 'audit', 'critique'];
+  var FACTORY_PHASE_LABELS = { build: 'Build', audit: 'Audit', critique: 'Critique' };
+
+  function detectFactoryPipelines() {
+    // Scan open issues for factory:<app>:<phase> labels
+    var apps = {}; // app -> { phase -> [issue, ...] }
+    for (var i = 0; i < issues.length; i++) {
+      var issue = issues[i];
+      if (!issue.labels) continue;
+      for (var j = 0; j < issue.labels.length; j++) {
+        var m = issue.labels[j].match(/^factory:([^:]+):([^:]+)$/);
+        if (!m) continue;
+        var app = m[1];
+        var phase = m[2];
+        if (FACTORY_PHASES.indexOf(phase) === -1) continue;
+        if (!apps[app]) apps[app] = {};
+        if (!apps[app][phase]) apps[app][phase] = [];
+        apps[app][phase].push(issue);
+      }
+    }
+
+    var pipelines = [];
+    var appNames = Object.keys(apps);
+    for (var a = 0; a < appNames.length; a++) {
+      var appName = appNames[a];
+      var phases = [];
+      for (var p = 0; p < FACTORY_PHASES.length; p++) {
+        var phaseName = FACTORY_PHASES[p];
+        var openIssues = apps[appName][phaseName] || [];
+        phases.push({
+          name: phaseName,
+          label: FACTORY_PHASE_LABELS[phaseName],
+          issues: openIssues,
+          open: openIssues.length
+        });
+      }
+      pipelines.push({ app: appName, phases: phases });
+    }
+    return pipelines;
+  }
+
+  function renderFactoryPipeline(pipelines) {
+    if (!pipelines.length) {
+      $factoryPipeline.style.display = 'none';
+      $factoryPipeline.innerHTML = '';
+      return;
+    }
+
+    var html = '<div class="factory-pipeline">';
+    for (var i = 0; i < pipelines.length; i++) {
+      var pl = pipelines[i];
+      html += '<div class="factory-pipeline-app">';
+      html += '<div class="factory-pipeline-header">' + esc(pl.app) + ' pipeline</div>';
+      html += '<div class="factory-pipeline-steps">';
+
+      // Determine phase statuses: done (0 open), active (first non-done), pending (rest)
+      var firstActiveFound = false;
+      for (var p = 0; p < pl.phases.length; p++) {
+        if (p > 0) html += '<span class="factory-step-arrow">→</span>';
+        var phase = pl.phases[p];
+        var cls, content;
+        if (phase.open === 0) {
+          // No open issues in this phase — could be done or never had issues
+          // If no earlier phase is active, this is done; otherwise pending
+          if (!firstActiveFound) {
+            cls = 'done';
+            content = '<span class="factory-step-icon">✓</span> ' + esc(phase.label);
+          } else {
+            cls = 'pending';
+            content = '<span class="factory-step-icon">○</span> ' + esc(phase.label);
+          }
+        } else if (!firstActiveFound) {
+          cls = 'active';
+          firstActiveFound = true;
+          content = esc(phase.label) + ' <span class="factory-step-badge">' + phase.open + '</span>';
+        } else {
+          cls = 'pending';
+          content = '<span class="factory-step-icon">○</span> ' + esc(phase.label);
+        }
+        html += '<span class="factory-step ' + cls + '">' + content + '</span>';
+      }
+
+      html += '</div></div>';
+    }
+    html += '</div>';
+    $factoryPipeline.innerHTML = html;
+    $factoryPipeline.style.display = '';
+  }
+
   function renderIssues() {
     if (!selectedProject) {
       $issuesSection.style.display = "none";
       $planBtn.style.display = "none";
+      renderFactoryPipeline([]);
       return;
     }
 
@@ -595,6 +686,7 @@
     if (issues.length === 0) {
       $issuesTree.innerHTML = '<div class="empty-state">No open issues</div>';
       $issuesCount.style.display = "none";
+      renderFactoryPipeline([]);
       return;
     }
 
@@ -611,6 +703,10 @@
 
     $issuesTree.innerHTML = "";
     $issuesTree.appendChild(ul);
+
+    // Factory pipeline visualization
+    var pipelines = detectFactoryPipelines();
+    renderFactoryPipeline(pipelines);
   }
 
   function renderAllPRs() {

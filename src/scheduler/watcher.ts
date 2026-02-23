@@ -12,7 +12,7 @@
 import { config } from "../config.js";
 import { getRepoInfo, getOpenIssues, getOpenPRs, findLinkedPR, getPREnrichment, type GitHubPR } from "../api/github.js";
 import { parseDependencies } from "../api/deps.js";
-import { buildDependencyGraph, findStackUnblockedIssues, detectCycles, type DependencyGraph } from "./graph.js";
+import { buildDependencyGraph, findStackUnblockedIssues, detectCycles, filterByFactoryPhase, type DependencyGraph } from "./graph.js";
 import { scanProjects } from "../projects/scanner.js";
 import { spawnSession } from "../bot/commands.js";
 import { getSession, setSession, getAllSessions } from "../state/sessions.js";
@@ -312,9 +312,13 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   );
   const allStackUnblocked = findStackUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers, stackReadyIssues);
 
+  // Apply factory phase ordering: block later-phase issues until earlier phases clear
+  const issuesWithLabels = openIssues.map((issue) => ({ number: issue.number, labels: issue.labels }));
+  const phaseFiltered = filterByFactoryPhase(allStackUnblocked, issuesWithLabels, openIssueNumbers);
+
   // Filter to only issues explicitly queued
   const queued = state.scheduledChains;
-  const stackUnblocked = allStackUnblocked.filter((s) => queued.has(s.issueNumber));
+  const stackUnblocked = phaseFiltered.filter((s) => queued.has(s.issueNumber));
 
   // Attach debug info
   result.debug = {

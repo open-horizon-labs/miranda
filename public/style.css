@@ -327,6 +327,89 @@ body {
   font-size: 14px;
 }
 
+/* --- Factory Pipeline --- */
+
+.factory-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--tg-theme-secondary-bg-color, #1c1c1e);
+  border-radius: 12px;
+}
+
+.factory-pipeline-app {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.factory-pipeline-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--tg-theme-hint-color, #8e8e93);
+}
+
+.factory-pipeline-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.factory-step {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.factory-step.done {
+  color: #30d158;
+}
+
+.factory-step.done .factory-step-icon {
+  font-size: 14px;
+}
+
+.factory-step.active {
+  color: var(--tg-theme-text-color, #fff);
+  background: var(--tg-theme-bg-color, #2c2c2e);
+}
+
+.factory-step.active .factory-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--tg-theme-button-color, #3390ec);
+  color: var(--tg-theme-button-text-color, #fff);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.factory-step.pending {
+  color: var(--tg-theme-hint-color, #8e8e93);
+  opacity: 0.5;
+}
+
+.factory-step-arrow {
+  color: var(--tg-theme-hint-color, #8e8e93);
+  font-size: 12px;
+  padding: 0 2px;
+  opacity: 0.4;
+}
+
 /* --- Issue Tree --- */
 
 .issue-tree {
