@@ -338,16 +338,9 @@ body {
 .factory-pipeline-app {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
-.factory-pipeline-header {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--tg-theme-hint-color, #8e8e93);
-}
 
 .factory-pipeline-steps {
   display: flex;
@@ -404,6 +397,46 @@ body {
   font-size: 12px;
   padding: 0 2px;
   opacity: 0.4;
+}
+
+.factory-phase-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.factory-phase-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--tg-theme-hint-color, #8e8e93);
+  margin-top: 4px;
+}
+
+.factory-issue-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--tg-theme-bg-color, #1c1c1e);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.factory-issue-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tg-theme-text-color, #fff);
+}
+
+.factory-issue-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 /* --- Issue Tree --- */

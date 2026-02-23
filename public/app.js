@@ -397,18 +397,25 @@
   // Render: Issue Tree
   // ---------------------------------------------------------------------------
 
-  function buildIssueTree() {
+  function buildIssueTree(excludeNumbers) {
+    excludeNumbers = excludeNumbers || {};
+    // Filter out excluded issues
+    var filtered = [];
+    for (var f = 0; f < issues.length; f++) {
+      if (!excludeNumbers[issues[f].number]) filtered.push(issues[f]);
+    }
+
     // Map issue number -> issue object
     var issueMap = {};
-    for (var i = 0; i < issues.length; i++) {
-      issueMap[issues[i].number] = issues[i];
+    for (var i = 0; i < filtered.length; i++) {
+      issueMap[filtered[i].number] = filtered[i];
     }
 
     // Build PR map: issue number -> pr object
     var prMap = {};
-    for (var j = 0; j < issues.length; j++) {
-      if (issues[j].pr) {
-        prMap[issues[j].number] = issues[j].pr;
+    for (var j = 0; j < filtered.length; j++) {
+      if (filtered[j].pr) {
+        prMap[filtered[j].number] = filtered[j].pr;
       }
     }
 
@@ -416,23 +423,23 @@
     var childrenOf = {};
     var isChild = {};
 
-    for (var k = 0; k < issues.length; k++) {
-      var deps = issues[k].dependsOn || [];
+    for (var k = 0; k < filtered.length; k++) {
+      var deps = filtered[k].dependsOn || [];
       for (var d = 0; d < deps.length; d++) {
         var dep = deps[d];
         if (issueMap[dep]) {
           if (!childrenOf[dep]) childrenOf[dep] = [];
-          childrenOf[dep].push(issues[k]);
-          isChild[issues[k].number] = true;
+          childrenOf[dep].push(filtered[k]);
+          isChild[filtered[k].number] = true;
         }
       }
     }
 
     // Root issues: not a child of any open issue
     var roots = [];
-    for (var r = 0; r < issues.length; r++) {
-      if (!isChild[issues[r].number]) {
-        roots.push(issues[r]);
+    for (var r = 0; r < filtered.length; r++) {
+      if (!isChild[filtered[r].number]) {
+        roots.push(filtered[r]);
       }
     }
 
@@ -590,6 +597,7 @@
   function detectFactoryPipelines() {
     // Scan open issues for factory:<app>:<phase> labels
     var apps = {}; // app -> { phase -> [issue, ...] }
+    var factoryIssueNumbers = {};
     for (var i = 0; i < issues.length; i++) {
       var issue = issues[i];
       if (!issue.labels) continue;
@@ -602,6 +610,7 @@
         if (!apps[app]) apps[app] = {};
         if (!apps[app][phase]) apps[app][phase] = [];
         apps[app][phase].push(issue);
+        factoryIssueNumbers[issue.number] = true;
       }
     }
 
@@ -622,54 +631,151 @@
       }
       pipelines.push({ app: appName, phases: phases });
     }
-    return pipelines;
+    return { pipelines: pipelines, factoryIssueNumbers: factoryIssueNumbers };
   }
 
   function renderFactoryPipeline(pipelines) {
+    $factoryPipeline.innerHTML = '';
     if (!pipelines.length) {
       $factoryPipelineSection.style.display = 'none';
-      $factoryPipeline.innerHTML = '';
       return;
     }
 
-    var html = '<div class="factory-pipeline">';
+    var queuedSet = getQueuedSet();
+    var container = document.createElement('div');
+    container.className = 'factory-pipeline';
+
     for (var i = 0; i < pipelines.length; i++) {
       var pl = pipelines[i];
-      html += '<div class="factory-pipeline-app">';
-      html += '<div class="factory-pipeline-header">' + esc(pl.app) + ' pipeline</div>';
-      html += '<div class="factory-pipeline-steps">';
+      var appDiv = document.createElement('div');
+      appDiv.className = 'factory-pipeline-app';
 
-      // Determine phase statuses: done (0 open), active (first non-done), pending (rest)
+      // Phase progress bar
+      var stepsDiv = document.createElement('div');
+      stepsDiv.className = 'factory-pipeline-steps';
+
       var firstActiveFound = false;
       for (var p = 0; p < pl.phases.length; p++) {
-        if (p > 0) html += '<span class="factory-step-arrow">→</span>';
-        var phase = pl.phases[p];
-        var cls, content;
-        if (phase.open === 0) {
-          // No open issues in this phase — could be done or never had issues
-          // If no earlier phase is active, this is done; otherwise pending
-          if (!firstActiveFound) {
-            cls = 'done';
-            content = '<span class="factory-step-icon">✓</span> ' + esc(phase.label);
-          } else {
-            cls = 'pending';
-            content = '<span class="factory-step-icon">○</span> ' + esc(phase.label);
-          }
-        } else if (!firstActiveFound) {
-          cls = 'active';
-          firstActiveFound = true;
-          content = esc(phase.label) + ' <span class="factory-step-badge">' + phase.open + '</span>';
-        } else {
-          cls = 'pending';
-          content = '<span class="factory-step-icon">○</span> ' + esc(phase.label);
+        if (p > 0) {
+          var arrow = document.createElement('span');
+          arrow.className = 'factory-step-arrow';
+          arrow.textContent = '\u2192';
+          stepsDiv.appendChild(arrow);
         }
-        html += '<span class="factory-step ' + cls + '">' + content + '</span>';
+        var phase = pl.phases[p];
+        var step = document.createElement('span');
+        var cls, icon;
+        if (phase.open === 0 && !firstActiveFound) {
+          cls = 'done'; icon = '\u2713';
+        } else if (phase.open > 0 && !firstActiveFound) {
+          cls = 'active'; icon = null;
+          firstActiveFound = true;
+        } else {
+          cls = 'pending'; icon = '\u25CB';
+        }
+        step.className = 'factory-step ' + cls;
+        if (icon) {
+          step.innerHTML = '<span class="factory-step-icon">' + icon + '</span> ' + esc(phase.label);
+        } else {
+          step.innerHTML = esc(phase.label) + ' <span class="factory-step-badge">' + phase.open + '</span>';
+        }
+        stepsDiv.appendChild(step);
+      }
+      appDiv.appendChild(stepsDiv);
+
+      // Issue rows per phase
+      for (var q = 0; q < pl.phases.length; q++) {
+        var ph = pl.phases[q];
+        if (ph.issues.length === 0) continue;
+
+        var phaseGroup = document.createElement('div');
+        phaseGroup.className = 'factory-phase-group';
+
+        var phaseLabel = document.createElement('div');
+        phaseLabel.className = 'factory-phase-label';
+        phaseLabel.textContent = ph.label;
+        phaseGroup.appendChild(phaseLabel);
+
+        for (var r = 0; r < ph.issues.length; r++) {
+          var issue = ph.issues[r];
+          var row = document.createElement('div');
+          row.className = 'factory-issue-row';
+
+          var num = document.createElement('span');
+          num.className = 'issue-number clickable';
+          num.textContent = '#' + issue.number;
+          if (repoUrl) {
+            num.addEventListener('click', (function (url) {
+              return function () { openLink(url); };
+            })(repoUrl + '/issues/' + issue.number));
+          }
+          row.appendChild(num);
+
+          var title = document.createElement('span');
+          title.className = 'factory-issue-title';
+          title.textContent = issue.title;
+          row.appendChild(title);
+
+          // PR badge
+          if (issue.pr) {
+            var prBadge = document.createElement('span');
+            prBadge.className = 'issue-pr-badge clickable';
+            if (issue.pr.mergeable === true) {
+              prBadge.classList.add('ready');
+              prBadge.textContent = '\u2713 PR #' + issue.pr.number;
+            } else if (issue.pr.mergeable === false) {
+              prBadge.classList.add('conflicts');
+              prBadge.textContent = '\u2717 PR #' + issue.pr.number;
+            } else {
+              prBadge.classList.add('open');
+              prBadge.textContent = 'PR #' + issue.pr.number;
+            }
+            if (issue.pr.url) {
+              prBadge.addEventListener('click', (function (url) {
+                return function () { openLink(url); };
+              })(issue.pr.url));
+            }
+            row.appendChild(prBadge);
+          }
+
+          // Action buttons
+          var actions = document.createElement('span');
+          actions.className = 'factory-issue-actions';
+
+          var issueSessionId = selectedProject ? 'oh-task-' + selectedProject + '-' + issue.number : null;
+          var hasActiveSession = issueSessionId && sessions.some(function (s) { return s.taskId === issueSessionId; });
+          if (hasActiveSession) {
+            var runSpan = document.createElement('span');
+            runSpan.className = 'btn btn-in-progress btn-sm';
+            runSpan.textContent = 'In Progress\u2026';
+            actions.appendChild(runSpan);
+          } else {
+            var startBtn = document.createElement('button');
+            startBtn.className = 'btn btn-primary btn-sm';
+            startBtn.textContent = 'Start';
+            startBtn.setAttribute('data-issue', issue.number);
+            startBtn.addEventListener('click', handleStartClick);
+            actions.appendChild(startBtn);
+          }
+
+          var isQueued = queuedSet[issue.number];
+          var queueBtn = document.createElement('button');
+          queueBtn.className = 'btn btn-sm ' + (isQueued ? 'btn-queued' : 'btn-queue');
+          queueBtn.textContent = isQueued ? 'Queued' : 'Queue';
+          queueBtn.setAttribute('data-issue', issue.number);
+          queueBtn.addEventListener('click', handleQueueClick);
+          actions.appendChild(queueBtn);
+
+          row.appendChild(actions);
+          phaseGroup.appendChild(row);
+        }
+        appDiv.appendChild(phaseGroup);
       }
 
-      html += '</div></div>';
+      container.appendChild(appDiv);
     }
-    html += '</div>';
-    $factoryPipeline.innerHTML = html;
+
+    $factoryPipeline.appendChild(container);
     $factoryPipelineSection.style.display = '';
   }
 
@@ -691,23 +797,37 @@
       return;
     }
 
-    $issuesCount.textContent = issues.length;
-    $issuesCount.style.display = "";
+    // Factory pipeline — detect first, filter from tree
+    var factory = detectFactoryPipelines();
+    var factoryNums = factory.factoryIssueNumbers;
 
-    var tree = buildIssueTree();
-    var ul = document.createElement("ul");
-    ul.className = "issue-tree";
+    // Issue count excludes factory issues
+    var nonFactoryCount = issues.length;
+    var numKeys = Object.keys(factoryNums);
+    for (var fn = 0; fn < numKeys.length; fn++) {
+      if (factoryNums[numKeys[fn]]) nonFactoryCount--;
+    }
+    $issuesCount.textContent = nonFactoryCount > 0 ? nonFactoryCount : issues.length;
+    $issuesCount.style.display = '';
+
+    var tree = buildIssueTree(factoryNums);
+    var ul = document.createElement('ul');
+    ul.className = 'issue-tree';
 
     for (var i = 0; i < tree.roots.length; i++) {
       ul.appendChild(renderIssueNode(tree.roots[i], tree.childrenOf, 0));
     }
 
-    $issuesTree.innerHTML = "";
-    $issuesTree.appendChild(ul);
+    $issuesTree.innerHTML = '';
+    if (tree.roots.length > 0) {
+      $issuesTree.appendChild(ul);
+    } else if (nonFactoryCount === 0 && factory.pipelines.length > 0) {
+      $issuesTree.innerHTML = '<div class="empty-state">All issues managed by factory pipeline</div>';
+    } else {
+      $issuesTree.innerHTML = '<div class="empty-state">No open issues</div>';
+    }
 
-    // Factory pipeline visualization
-    var pipelines = detectFactoryPipelines();
-    renderFactoryPipeline(pipelines);
+    renderFactoryPipeline(factory.pipelines);
   }
 
   function renderAllPRs() {
