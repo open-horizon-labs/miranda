@@ -457,6 +457,21 @@ a.pr-status:active {
   min-width: 0;
 }
 
+.pr-stacked {
+  border-left: 3px solid var(--tg-theme-link-color);
+}
+
+.pr-stack-badge {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.pr-card-stack {
+  font-size: 12px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--tg-theme-link-color);
+}
+
 .pr-card-header {
   display: flex;
   align-items: flex-start;

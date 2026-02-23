@@ -605,13 +605,21 @@
     for (var j = 0; j < allPRs.length; j++) {
       var pr = allPRs[j];
       var enrichment = pr.enrichment;
-      html += '<div class="pr-card">';
+      var isStacked = pr.base && pr.base !== "main" && pr.base !== "master";
+      html += '<div class="pr-card' + (isStacked ? ' pr-stacked' : '') + '">';
       // PR header: project badge + number + title
       html += '<div class="pr-card-header">';
       html += '<span class="pr-card-project">' + esc(pr.project) + '</span>';
+      if (isStacked) {
+        html += '<span class="pr-stack-badge">⮕</span>';
+      }
       html += '<span class="pr-card-number clickable" data-url="' + escAttr(pr.url || '') + '">#' + pr.number + '</span>';
       html += '<span class="pr-card-title">' + esc(pr.title) + '</span>';
       html += '</div>';
+      // Stack target
+      if (isStacked) {
+        html += '<div class="pr-card-stack">→ ' + esc(pr.base) + '</div>';
+      }
 
       // Linked issues
       if (pr.linkedIssues && pr.linkedIssues.length > 0) {
