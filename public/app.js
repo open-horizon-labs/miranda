@@ -41,7 +41,7 @@
   var commentPrNum = null; // PR number for comment modal
   var commentProject = null; // project name for comment modal (cross-project)
 
-  var REFRESH_INTERVAL = 10000; // 10 seconds
+  var REFRESH_INTERVAL = 60000; // 60 seconds
 
   // Log panel state: { taskId: { es: EventSource, panel: Element, autoScroll: bool } }
   var logStreams = {};

@@ -148,14 +148,49 @@ export async function getRepoInfo(projectPath: string): Promise<{ owner: string;
   return info;
 }
 
+/** Simple TTL cache entry. */
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+/**
+ * TTL cache for listing endpoints (issues, PRs).
+ * Keyed by "owner/repo", shared across callers so duplicate fetches
+ * within the same refresh cycle hit cache instead of GitHub.
+ */
+const LISTING_TTL_MS = 60_000; // 60 seconds
+const issueListCache = new Map<string, CacheEntry<GitHubIssue[]>>();
+const prListCache = new Map<string, CacheEntry<GitHubPR[]>>();
+
+/**
+ * Invalidate cached listing data for a repo after a write operation.
+ * Pass which caches to clear: issues, prs, or both.
+ */
+export function invalidateListingCache(
+  owner: string,
+  repo: string,
+  targets: { issues?: boolean; prs?: boolean } = { issues: true, prs: true }
+): void {
+  const key = `${owner}/${repo}`;
+  if (targets.issues) issueListCache.delete(key);
+  if (targets.prs) prListCache.delete(key);
+}
+
 /**
  * Fetch all open issues for a repository.
  * Paginates automatically (100 per page).
+ * Results are cached for 60 seconds.
  */
 export async function getOpenIssues(
   owner: string,
   repo: string
 ): Promise<GitHubIssue[]> {
+  const cacheKey = `${owner}/${repo}`;
+  const now = Date.now();
+  const cached = issueListCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.data;
+
   const issues: GitHubIssue[] = [];
   let page = 1;
 
@@ -189,17 +224,24 @@ export async function getOpenIssues(
     page++;
   }
 
+  issueListCache.set(cacheKey, { data: issues, expiresAt: now + LISTING_TTL_MS });
   return issues;
 }
 
 /**
  * Fetch all open PRs for a repository.
- * Paginates automatically.
+ * Paginates automatically. Hydrates mergeable status from individual PR fetches.
+ * Results are cached for 60 seconds.
  */
 export async function getOpenPRs(
   owner: string,
   repo: string
 ): Promise<GitHubPR[]> {
+  const cacheKey = `${owner}/${repo}`;
+  const now = Date.now();
+  const cached = prListCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.data;
+
   const prs: GitHubPR[] = [];
   let page = 1;
 
@@ -251,6 +293,7 @@ export async function getOpenPRs(
     })
   );
 
+  prListCache.set(cacheKey, { data: prs, expiresAt: now + LISTING_TTL_MS });
   return prs;
 }
 
@@ -416,11 +459,6 @@ export interface PREnrichment {
   coderabbit: CodeRabbitStatus;
 }
 
-/** Simple TTL cache entry. */
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
 
 const ENRICHMENT_TTL_MS = 30_000; // 30 seconds
 const enrichmentCache = new Map<string, CacheEntry<PREnrichment>>();

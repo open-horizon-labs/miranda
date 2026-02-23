@@ -23,6 +23,7 @@ import {
   GitHubRateLimitError,
   type GitHubPR,
   type PREnrichment,
+  invalidateListingCache,
 } from "./github.js";
 import type { Session } from "../types.js";
 import { subscribe, unsubscribe } from "./logs.js";
@@ -771,6 +772,7 @@ async function handleUpdateBranch(
   try {
     const { owner, repo } = await getRepoInfo(projectPath);
     const result = await updatePRBranch(owner, repo, num);
+    invalidateListingCache(owner, repo, { prs: true });
     json(res, 200, result);
   } catch (error) {
     if (error instanceof GitHubRateLimitError) {
