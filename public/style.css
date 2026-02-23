@@ -333,10 +333,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-bottom: 12px;
-  padding: 12px;
-  background: var(--tg-theme-secondary-bg-color, #1c1c1e);
-  border-radius: 12px;
 }
 
 .factory-pipeline-app {

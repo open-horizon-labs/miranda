@@ -64,6 +64,7 @@
   var $issuesSection = document.getElementById("issues-section");
   var $issuesTree = document.getElementById("issues-tree");
   var $factoryPipeline = document.getElementById("factory-pipeline");
+  var $factoryPipelineSection = document.getElementById("factory-pipeline-section");
   var $issuesCount = document.getElementById("issues-count");
   var $refreshBtn = document.getElementById("refresh-btn");
   var $loadingBar = document.getElementById("loading-bar");
@@ -626,7 +627,7 @@
 
   function renderFactoryPipeline(pipelines) {
     if (!pipelines.length) {
-      $factoryPipeline.style.display = 'none';
+      $factoryPipelineSection.style.display = 'none';
       $factoryPipeline.innerHTML = '';
       return;
     }
@@ -669,7 +670,7 @@
     }
     html += '</div>';
     $factoryPipeline.innerHTML = html;
-    $factoryPipeline.style.display = '';
+    $factoryPipelineSection.style.display = '';
   }
 
   function renderIssues() {
