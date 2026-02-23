@@ -1,7 +1,7 @@
 {
   "name": "miranda",
-  "version": "0.6.0",
-  "description": "oh-task, oh-merge, oh-notes, oh-plan, and jira-plan skills for autonomous GitHub issue workflows, batch PR merging, PR feedback handling, and task planning (GitHub + Jira). Includes signal_completion custom tool for structured completion signaling.",
+  "version": "0.7.0",
+  "description": "oh-task, oh-merge, oh-notes, oh-plan, oh-review, oh-ci, oh-conflict, and jira-plan skills for autonomous GitHub issue workflows, batch PR merging, PR feedback handling, CI fix, conflict resolution, and task planning (GitHub + Jira). Includes signal_completion custom tool for structured completion signaling.",
   "author": {
     "name": "Open Horizon Labs",
     "email": "hi@ohl.dev",
