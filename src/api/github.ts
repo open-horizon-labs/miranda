@@ -295,6 +295,23 @@ export async function updatePRBranch(
 }
 
 /**
+ * Return how many commits head is behind base for a PR branch pair.
+ */
+export async function getBranchBehindBy(
+  owner: string,
+  repo: string,
+  baseRef: string,
+  headRef: string
+): Promise<number> {
+  const encodedBase = encodeURIComponent(baseRef);
+  const encodedHead = encodeURIComponent(headRef);
+  const cmp = await githubFetch<{ behind_by: number }>(
+    `/repos/${owner}/${repo}/compare/${encodedBase}...${encodedHead}`
+  );
+  return cmp.behind_by;
+}
+
+/**
  * Close a GitHub issue.
  */
 export async function closeIssue(

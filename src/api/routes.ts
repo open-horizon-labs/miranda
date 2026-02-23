@@ -19,6 +19,7 @@ import {
   closeIssue,
   findLinkedPR,
   getPREnrichment,
+  getBranchBehindBy,
   GitHubRateLimitError,
   type GitHubPR,
   type PREnrichment,
@@ -868,6 +869,7 @@ async function handleGetAllPRs(
       base: string;
       head: string;
       mergeStateStatus: string | null;
+      behindBy: number;
       linkedIssues: number[];
       enrichment: PREnrichment | null;
     }> = [];
@@ -877,12 +879,17 @@ async function handleGetAllPRs(
       index: number;
       promise: Promise<PREnrichment>;
     }> = [];
+    const lagPromises: Array<{
+      index: number;
+      promise: Promise<number>;
+    }> = [];
 
     for (const { project, owner, repo, prs } of perProjectResults) {
       for (const pr of prs) {
         // Filter: only Miranda-created PRs (branch matches issue/N or issue-N)
         if (!/issue[/-]\d+/.test(pr.head)) continue;
 
+        const isStacked = pr.base !== "main" && pr.base !== "master";
         const idx = allPRs.length;
         allPRs.push({
           project,
@@ -896,6 +903,7 @@ async function handleGetAllPRs(
           linkedIssues: extractLinkedIssueNumbers(pr),
           enrichment: null,
           mergeStateStatus: pr.mergeStateStatus,
+          behindBy: 0,
         });
 
         if (owner && repo) {
@@ -903,6 +911,12 @@ async function handleGetAllPRs(
             index: idx,
             promise: getPREnrichment(owner, repo, pr),
           });
+          if (isStacked) {
+            lagPromises.push({
+              index: idx,
+              promise: getBranchBehindBy(owner, repo, pr.base, pr.head),
+            });
+          }
         }
       }
     }
@@ -914,6 +928,15 @@ async function handleGetAllPRs(
           allPRs[index].enrichment = await promise;
         } catch {
           // Best-effort: leave as null
+        }
+      })
+    );
+    await Promise.all(
+      lagPromises.map(async ({ index, promise }) => {
+        try {
+          allPRs[index].behindBy = await promise;
+        } catch {
+          // Best-effort: leave as 0
         }
       })
     );

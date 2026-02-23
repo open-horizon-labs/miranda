@@ -771,7 +771,7 @@
       } else {
         html += '<span class="btn btn-merge-disabled">Checking\u2026</span>';
       }
-      if (pr.mergeStateStatus === 'BEHIND') {
+      if ((pr.behindBy || 0) > 0 && pr.mergeable !== false) {
         html += '<button class="btn btn-update" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="update-branch">Update</button>';
       }
       html += '<button class="btn btn-secondary" data-pr="' + pr.number + '" data-project="' + escAttr(pr.project) + '" data-action="comment">Comment</button>';
