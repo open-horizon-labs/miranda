@@ -94,6 +94,15 @@ body {
   color: var(--tg-theme-destructive-text-color);
 }
 
+.btn-ghost {
+  background: none;
+  color: var(--tg-theme-link-color);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  margin-left: auto;
+}
+
 .btn-icon {
   width: 36px;
   height: 36px;
