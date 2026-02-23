@@ -353,8 +353,8 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   let slotsRemaining = availableSlots;
 
   // Spawn stack-unblocked issues (on dep's branch)
-  const toStack = stackUnblocked.slice(0, slotsRemaining);
-  for (const { issueNumber, baseDep } of toStack) {
+  for (const { issueNumber, baseDep } of stackUnblocked) {
+    if (slotsRemaining <= 0) break;
     const baseBranch = branchMap.get(baseDep);
     if (!baseBranch) continue;
 
