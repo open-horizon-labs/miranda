@@ -21,6 +21,7 @@ import {
 } from "../state/sessions.js";
 import { scanProjects, getProjectTasks, isRepoDirty, pullProject, updateProjectIfClean, selfUpdate, resetProject, getDefaultBranch, type UpdateResult } from "../projects/scanner.js";
 import { cloneAndInit } from "../projects/clone.js";
+import { getRepoInfo, getOpenIssues } from "../api/github.js";
 import { config } from "../config.js";
 import type { Session, SkillType } from "../types.js";
 
@@ -185,14 +186,14 @@ async function handleStart(ctx: Context): Promise<void> {
 I give voice to the Primer. Commands:
 
 /projects - List projects with tasks
-/tasks <project> - List tasks for a project
+/tasks <project> - Show open GitHub issues
 /newproject <repo> - Clone and init new project
 /pull - Pull all clean projects
 /selfupdate - Pull and rebuild Miranda
 /restart - Graceful restart
 /reset <project> - Hard reset project to origin
 /ohtask <project> <issue>... - Work GitHub issues
-/ohplan <project> <desc> - Plan and create GitHub issues
+/ohplan <project> - List/create planned issues
 /ohmerge <project> - Batch merge GitHub issue PRs
 /ohnotes <project> <pr> - Address PR feedback
 /ohreview <project> <pr> - Review PR against issue
@@ -247,13 +248,13 @@ async function handleProjects(ctx: Context): Promise<void> {
 }
 
 async function handleTasks(ctx: Context): Promise<void> {
-  await ctx.reply(
-    `The /tasks command has been deprecated.
+  const projectName = ctx.match?.toString().trim();
+  if (!projectName) {
+    await ctx.reply("Usage: /tasks <project>\n\nShows all open GitHub issues for a project.");
+    return;
+  }
 
-Use GitHub issues workflow instead:
-  /ohtask <project> <issue>...`,
-    { parse_mode: "Markdown" }
-  );
+  await sendProjectIssues((text, opts) => ctx.reply(text, opts), projectName);
 }
 
 async function handleStatus(ctx: Context): Promise<void> {
@@ -898,19 +899,69 @@ Examples:
   }
 }
 
+async function handleOhPlanList(ctx: Context, projectName: string): Promise<void> {
+  const projects = await scanProjects();
+  const project = projects.find((p) => p.name === projectName);
+  if (!project) {
+    await ctx.reply(`Project \`${projectName}\` not found`, { parse_mode: "Markdown" });
+    return;
+  }
+
+  try {
+    const { owner, repo } = await getRepoInfo(project.path);
+    const issues = await getOpenIssues(owner, repo);
+    const planned = issues.filter((i) => i.labels.includes("oh-planned"));
+
+    if (planned.length === 0) {
+      await ctx.reply(
+        `*${projectName}* \u2014 _No planned issues_\n\nUse \`/ohplan ${projectName} <description>\` to create issues.`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const lines: string[] = [`*${projectName}* \u2014 ${planned.length} planned issue${planned.length === 1 ? "" : "s"}`, ""];
+    for (const issue of planned) {
+      lines.push(`#${issue.number} \u00b7 ${issue.title}`);
+    }
+
+    const keyboard = new InlineKeyboard();
+    for (const issue of planned) {
+      keyboard.text(`\u25b6 Execute #${issue.number}`, `ohtask:${projectName}:${issue.number}`).row();
+    }
+    if (planned.length > 1) {
+      keyboard.text(`\u25b6\u25b6 Execute All (${planned.length})`, `ohtaskall:${projectName}`).row();
+    }
+
+    await ctx.reply(lines.join("\n"), {
+      parse_mode: "Markdown",
+      reply_markup: keyboard,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`Failed to fetch planned issues: ${message}`);
+  }
+}
+
 async function handleOhPlan(ctx: Context): Promise<void> {
   const input = ctx.match?.toString().trim() ?? "";
-
-  // Parse: <project> <description...>
-  // First word is project, rest is the description
-  const firstSpace = input.indexOf(" ");
-  if (firstSpace === -1 || firstSpace === input.length - 1) {
+  if (!input) {
     await ctx.reply(
-      `Usage: /ohplan <project> <task description>
+      `Usage:
+  /ohplan <project> \u2014 List planned issues
+  /ohplan <project> <description> \u2014 Create new planned issues
 
-Example:
+Examples:
+  /ohplan miranda
   /ohplan miranda Add heartbeat monitoring for sessions`
     );
+    return;
+  }
+
+  // Detect listing mode: no space means project name only
+  const firstSpace = input.indexOf(" ");
+  if (firstSpace === -1) {
+    await handleOhPlanList(ctx, input);
     return;
   }
 
@@ -918,9 +969,10 @@ Example:
   const description = input.slice(firstSpace + 1).trim();
 
   if (!description) {
-    await ctx.reply("Error: Task description is required");
+    await handleOhPlanList(ctx, projectName);
     return;
   }
+
 
   // Validate project exists in PROJECTS_DIR
   const projectPath = `${config.projectsDir}/${projectName}`;
@@ -1415,6 +1467,102 @@ async function handleFreeText(ctx: Context): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await ctx.reply(`Failed to send input: ${message}`);
+  }
+}
+
+/**
+ * Send a formatted list of all open GitHub issues for a project.
+ * Used by /tasks command and tasks: callback handler.
+ */
+export async function sendProjectIssues(
+  replyFn: (text: string, options?: Record<string, unknown>) => Promise<unknown>,
+  projectName: string
+): Promise<void> {
+  const projects = await scanProjects();
+  const project = projects.find((p) => p.name === projectName);
+  if (!project) {
+    await replyFn(`Project \`${projectName}\` not found`, { parse_mode: "Markdown" });
+    return;
+  }
+
+  try {
+    const { owner, repo } = await getRepoInfo(project.path);
+    const issues = await getOpenIssues(owner, repo);
+
+    if (issues.length === 0) {
+      await replyFn(`*${projectName}* — _No open issues_`, { parse_mode: "Markdown" });
+      return;
+    }
+
+    const lines: string[] = [`*${projectName}* — ${issues.length} open issue${issues.length === 1 ? "" : "s"}`, ""];
+    for (const issue of issues) {
+      const labelStr = issue.labels.length > 0
+        ? " · " + issue.labels.map((l) => `\`${l}\``).join(" ")
+        : "";
+      lines.push(`#${issue.number} · ${issue.title}${labelStr}`);
+    }
+
+    const keyboard = new InlineKeyboard();
+    const planned = issues.filter((i) => i.labels.includes("oh-planned"));
+    if (planned.length > 0) {
+      lines.push("");
+      lines.push(`_${planned.length} planned issue${planned.length === 1 ? "" : "s"} ready to execute_`);
+      for (const issue of planned) {
+        keyboard.text(`▶ Execute #${issue.number}`, `ohtask:${projectName}:${issue.number}`).row();
+      }
+    }
+
+    await replyFn(lines.join("\n"), {
+      parse_mode: "Markdown",
+      ...(planned.length > 0 ? { reply_markup: keyboard } : {}),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await replyFn(`Failed to fetch issues: ${message}`);
+  }
+}
+
+/**
+ * Spawn an oh-task session for a single issue.
+ * Used by ohtask: callback handler.
+ */
+export async function spawnOhTaskForIssue(
+  projectName: string,
+  issueNumber: string,
+  chatId: number
+): Promise<{ success: boolean; sessionKey: string; sessionId?: string; error?: string }> {
+  const projectPath = `${config.projectsDir}/${projectName}`;
+  const sessionKey = `oh-task-${projectName}-${issueNumber}`;
+
+  const existing = getSession(sessionKey);
+  if (existing) {
+    return { success: false, sessionKey, error: `Session already exists (${existing.status})` };
+  }
+
+  try {
+    const pullResult = await pullProject(projectPath);
+    if (!pullResult.success) {
+      return { success: false, sessionKey, error: `Pull failed: ${pullResult.error}` };
+    }
+
+    const sessionId = await spawnSession("oh-task", issueNumber, chatId, {
+      projectPath,
+      projectName,
+    });
+
+    const session: Session = {
+      taskId: sessionKey,
+      sessionId,
+      skill: "oh-task",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+    return { success: true, sessionKey, sessionId };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, sessionKey, error: message };
   }
 }
 

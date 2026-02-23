@@ -1,6 +1,6 @@
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { config, validateConfig } from "./config.js";
-import { registerCommands, cleanupOrphanedSessions, discoverOrphanedSessions, executeKillall, handleResetCallback, stopSession } from "./bot/commands.js";
+import { registerCommands, cleanupOrphanedSessions, discoverOrphanedSessions, executeKillall, handleResetCallback, stopSession, sendProjectIssues, spawnOhTaskForIssue } from "./bot/commands.js";
 import { parseCallback } from "./bot/keyboards.js";
 import {
   getAgent,
@@ -19,6 +19,8 @@ import {
 import { startApiServer, stopApiServer } from "./api/server.js";
 import { setApiShutdownFn } from "./api/routes.js";
 import { startScheduler, stopScheduler, setNotifier } from "./scheduler/watcher.js";
+import { getRepoInfo, getOpenIssues } from "./api/github.js";
+import { scanProjects, pullProject } from "./projects/scanner.js";
 
 // Validate configuration
 validateConfig();
@@ -180,6 +182,101 @@ bot.on("callback_query:data", async (ctx) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await ctx.answerCallbackQuery({ text: `Error: ${message}` });
+    }
+    return;
+  }
+
+  // Handle tasks:<project> callback from /projects inline keyboard
+  if (data.startsWith("tasks:")) {
+    const projectName = data.slice(6);
+    await ctx.answerCallbackQuery();
+    await sendProjectIssues((text, opts) => ctx.reply(text, opts), projectName);
+    return;
+  }
+
+  // Handle ohtask:<project>:<issue> callback from planned issues listing
+  if (data.startsWith("ohtask:") && !data.startsWith("ohtaskall:")) {
+    const parts = data.slice(7).split(":");
+    if (parts.length === 2 && chatId) {
+      const [projectName, issueNumber] = parts;
+      await ctx.answerCallbackQuery({ text: `Starting #${issueNumber}...` });
+      const result = await spawnOhTaskForIssue(projectName, issueNumber, chatId);
+      if (result.success) {
+        const keyboard = new InlineKeyboard().text(`Stop #${issueNumber}`, `stop:${result.sessionKey}`);
+        await ctx.reply(
+          `oh-task started for ${projectName} #${issueNumber}\nSession: \`${result.sessionId}\``,
+          { parse_mode: "Markdown", reply_markup: keyboard }
+        );
+      } else {
+        await ctx.reply(`Failed to start #${issueNumber}: ${result.error}`);
+      }
+    }
+    return;
+  }
+
+  // Handle ohtaskall:<project> callback — start all oh-planned issues
+  if (data.startsWith("ohtaskall:")) {
+    const projectName = data.slice(10);
+    if (!chatId) return;
+
+    await ctx.answerCallbackQuery({ text: "Starting all planned issues..." });
+
+    try {
+      const projects = await scanProjects();
+      const project = projects.find((p) => p.name === projectName);
+      if (!project) {
+        await ctx.reply(`Project \`${projectName}\` not found`, { parse_mode: "Markdown" });
+        return;
+      }
+
+      // Pull once before starting all issues
+      await pullProject(project.path);
+
+      const { owner, repo } = await getRepoInfo(project.path);
+      const issues = await getOpenIssues(owner, repo);
+      const planned = issues.filter((i) => i.labels.includes("oh-planned"));
+
+      if (planned.length === 0) {
+        await ctx.reply(`No planned issues found for ${projectName}`);
+        return;
+      }
+
+      const results: { issue: number; success: boolean; sessionId?: string; error?: string }[] = [];
+      for (const issue of planned) {
+        const r = await spawnOhTaskForIssue(projectName, String(issue.number), chatId);
+        results.push({ issue: issue.number, success: r.success, sessionId: r.sessionId, error: r.error });
+      }
+
+      const succeeded = results.filter((r) => r.success);
+      const failed = results.filter((r) => !r.success);
+
+      const lines: string[] = [];
+      if (succeeded.length > 0) {
+        lines.push("*Started:*");
+        for (const r of succeeded) {
+          lines.push(`  #${r.issue} \u2192 \`${r.sessionId}\``);
+        }
+      }
+      if (failed.length > 0) {
+        if (lines.length > 0) lines.push("");
+        lines.push("*Failed:*");
+        for (const r of failed) {
+          lines.push(`  #${r.issue}: ${r.error}`);
+        }
+      }
+
+      const keyboard = new InlineKeyboard();
+      for (const r of succeeded) {
+        keyboard.text(`Stop #${r.issue}`, `stop:oh-task-${projectName}-${r.issue}`).row();
+      }
+
+      await ctx.reply(lines.join("\n"), {
+        parse_mode: "Markdown",
+        ...(succeeded.length > 0 ? { reply_markup: keyboard } : {}),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await ctx.reply(`Failed to start planned issues: ${message}`);
     }
     return;
   }
