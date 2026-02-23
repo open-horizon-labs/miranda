@@ -719,6 +719,11 @@
     $allPrsCount.textContent = allPRs.length;
     $allPrsCount.style.display = "";
     var html = "";
+    var prByProjectHead = {};
+    for (var p = 0; p < allPRs.length; p++) {
+      var key = allPRs[p].project + "::" + allPRs[p].head;
+      prByProjectHead[key] = allPRs[p].number;
+    }
     for (var j = 0; j < allPRs.length; j++) {
       var pr = allPRs[j];
       var enrichment = pr.enrichment;
@@ -735,8 +740,9 @@
       html += '</div>';
       // Stack target
       if (isStacked) {
-        var baseNum = pr.base.match(/issue[/-](\d+)/);
-        html += '<div class="pr-card-stack">→ ' + (baseNum ? 'PR #' + baseNum[1] : esc(pr.base)) + '</div>'
+        var baseKey = pr.project + "::" + pr.base;
+        var basePrNumber = prByProjectHead[baseKey];
+        html += '<div class="pr-card-stack">→ ' + (basePrNumber ? 'PR #' + basePrNumber : esc(pr.base)) + '</div>';
       }
 
       // Linked issues
