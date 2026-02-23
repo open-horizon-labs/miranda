@@ -75,9 +75,10 @@ For target issue `#X`:
 
 6. **Update target issue dependencies**
    - Re-read target issue body.
-   - Rewrite `Depends on:` lines to contain ONLY unresolved deps.
+   - Rewrite `Depends on:` to one explicit scheduler-readable base dependency.
+   - Required: common base branch MUST be `issue/<B>` or `issue-<B>`; then set: `**Depends on:** #<B>`
+   - If common base is not an issue branch (for example `main`/`master`), stop with `blocked` and do NOT rewrite dependencies to `none`.
    - Do NOT leave merged dependency references in strikethrough (`~~#N~~`) form — remove them completely.
-   - If all deps are resolved, replace with: `**Depends on:** none (resolved by oh-join)`
    - Append/update a machine section:
      ```md
      <!-- oh-join -->
@@ -112,11 +113,12 @@ For target issue `#X`:
 - Never delete dependency context; only remove deps that are now merged.
 - Always include exact issue/PR numbers in reports.
 - Never rely on PR auto-close when merging into non-default branches; explicitly close dependency issues.
+- For stacked continuation, leave exactly one explicit `Depends on: #<base-issue>` when base is an issue branch.
 
 ## Exit Conditions
 
 - **Success**: all dependency PRs merged and issue dependencies updated
-- **Blocked**: missing dep PR, ambiguous base, or failing readiness checks
+- **Blocked**: missing dep PR, ambiguous base, non-issue base branch, or failing readiness checks
 - **Error**: merge/update operation failed unexpectedly
 
 ## Completion Signaling (MANDATORY)

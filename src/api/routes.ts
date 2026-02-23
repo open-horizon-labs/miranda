@@ -421,6 +421,7 @@ async function handleStartIssue(
   // Parse optional body for baseBranch
   const body = await parseJsonBody<{ baseBranch?: string }>(req);
   const baseBranch = body?.baseBranch;
+
   // Use authenticated user's ID as chatId (private chat ID === user ID in Telegram)
   const chatId = authedUser.id;
 
