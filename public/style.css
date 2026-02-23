@@ -163,6 +163,13 @@ body {
   flex-shrink: 0;
 }
 
+.btn-compact {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
 .project-selector select {
   width: 100%;
   padding: 10px 12px;
@@ -417,11 +424,11 @@ body {
 .factory-issue-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 4px 8px;
   background: var(--tg-theme-bg-color, #1c1c1e);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
 .factory-issue-title {
@@ -431,12 +438,22 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--tg-theme-text-color, #fff);
+  font-size: 12px;
 }
 
 .factory-issue-actions {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.factory-issue-row .issue-number {
+  font-size: 11px;
+}
+
+.factory-issue-row .issue-pr-badge {
+  font-size: 11px;
+  padding: 1px 6px;
 }
 
 /* --- Issue Tree --- */

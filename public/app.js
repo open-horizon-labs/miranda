@@ -762,12 +762,12 @@
           var hasActiveJoinSession = issueJoinSessionId && sessions.some(function (s) { return s.taskId === issueJoinSessionId; });
           if (hasActiveTaskSession || hasActiveJoinSession) {
             var runSpan = document.createElement('span');
-            runSpan.className = 'btn btn-in-progress btn-sm';
+            runSpan.className = 'btn btn-in-progress btn-compact';
             runSpan.textContent = hasActiveJoinSession ? 'Joining…' : 'In Progress…';
             actions.appendChild(runSpan);
           } else {
             var startBtn = document.createElement('button');
-            startBtn.className = 'btn btn-primary btn-sm';
+            startBtn.className = 'btn btn-primary btn-compact';
             startBtn.textContent = 'Start';
             startBtn.setAttribute('data-issue', issue.number);
             startBtn.addEventListener('click', handleStartClick);
@@ -775,7 +775,7 @@
 
             if (isMultiDependencyIssue(issue)) {
               var joinBtn = document.createElement('button');
-              joinBtn.className = 'btn btn-secondary btn-sm';
+              joinBtn.className = 'btn btn-secondary btn-compact';
               joinBtn.textContent = 'Join';
               joinBtn.setAttribute('data-issue', issue.number);
               joinBtn.addEventListener('click', handleJoinClick);
@@ -785,7 +785,7 @@
 
           var isQueued = queuedSet[issue.number];
           var queueBtn = document.createElement('button');
-          queueBtn.className = 'btn btn-sm ' + (isQueued ? 'btn-queued' : 'btn-queue');
+          queueBtn.className = 'btn btn-compact ' + (isQueued ? 'btn-queued' : 'btn-queue');
           queueBtn.textContent = isQueued ? 'Queued' : 'Queue';
           queueBtn.setAttribute('data-issue', issue.number);
           queueBtn.addEventListener('click', handleQueueClick);
