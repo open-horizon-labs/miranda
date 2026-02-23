@@ -262,8 +262,12 @@ describe("filterByFactoryPhase", () => {
 		];
 		const open = new Set([20, 21, 22]);
 
-		const result = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(result, [{ issueNumber: 21, baseDep: 20 }]);
+		const { passed, rejected } = filterByFactoryPhase(candidates, allIssues, open);
+		assert.deepStrictEqual(passed, [{ issueNumber: 21, baseDep: 20 }]);
+		assert.strictEqual(rejected.length, 1);
+		assert.strictEqual(rejected[0].issue, 22);
+		assert.strictEqual(rejected[0].blockedByPhase, "audit");
+		assert.deepStrictEqual(rejected[0].blockerIssues, [20, 21]);
 	});
 
 	it("unblocks critique when all audit-phase issues are closed", () => {
@@ -278,8 +282,8 @@ describe("filterByFactoryPhase", () => {
 		];
 		const open = new Set([22]); // only critique is open
 
-		const result = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(result, [{ issueNumber: 22, baseDep: 20 }]);
+		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
+		assert.deepStrictEqual(passed, [{ issueNumber: 22, baseDep: 20 }]);
 	});
 
 	it("passes through non-factory issues unchanged", () => {
@@ -292,8 +296,8 @@ describe("filterByFactoryPhase", () => {
 		];
 		const open = new Set([49, 50]);
 
-		const result = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(result, [{ issueNumber: 50, baseDep: 49 }]);
+		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
+		assert.deepStrictEqual(passed, [{ issueNumber: 50, baseDep: 49 }]);
 	});
 
 	it("handles mixed factory and non-factory issues", () => {
@@ -311,11 +315,13 @@ describe("filterByFactoryPhase", () => {
 		];
 		const open = new Set([20, 21, 22, 49, 50]);
 
-		const result = filterByFactoryPhase(candidates, allIssues, open);
-		const issues = result.map((r) => r.issueNumber);
+		const { passed, rejected } = filterByFactoryPhase(candidates, allIssues, open);
+		const issues = passed.map((r) => r.issueNumber);
 		assert.ok(issues.includes(21), "audit fix passes");
 		assert.ok(!issues.includes(22), "critique blocked");
 		assert.ok(issues.includes(50), "non-factory passes");
+		assert.strictEqual(rejected.length, 1);
+		assert.strictEqual(rejected[0].issue, 22);
 	});
 
 	it("blocks audit when build-phase issues are still open", () => {
@@ -328,8 +334,10 @@ describe("filterByFactoryPhase", () => {
 		];
 		const open = new Set([102, 103]);
 
-		const result = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(result, []);
+		const { passed, rejected } = filterByFactoryPhase(candidates, allIssues, open);
+		assert.deepStrictEqual(passed, []);
+		assert.strictEqual(rejected.length, 1);
+		assert.strictEqual(rejected[0].blockedByPhase, "build");
 	});
 
 	it("full factory lifecycle: build done, audit in progress, critique waits", () => {
@@ -351,8 +359,8 @@ describe("filterByFactoryPhase", () => {
 		];
 		const open = new Set([103, 104, 105, 106]); // build issues closed
 
-		const result = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(result, [{ issueNumber: 104, baseDep: 103 }]);
+		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
+		assert.deepStrictEqual(passed, [{ issueNumber: 104, baseDep: 103 }]);
 	});
 
 	it("independent factory apps don't block each other", () => {
@@ -367,7 +375,7 @@ describe("filterByFactoryPhase", () => {
 		];
 		const open = new Set([103, 200]); // dm audit open, cook audit closed
 
-		const result = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(result, [{ issueNumber: 200, baseDep: 199 }]);
+		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
+		assert.deepStrictEqual(passed, [{ issueNumber: 200, baseDep: 199 }]);
 	});
 });

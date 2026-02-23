@@ -12,7 +12,7 @@
 import { config } from "../config.js";
 import { getRepoInfo, getOpenIssues, getOpenPRs, findLinkedPR, getPREnrichment, type GitHubPR } from "../api/github.js";
 import { parseDependencies } from "../api/deps.js";
-import { buildDependencyGraph, findStackUnblockedIssues, detectCycles, filterByFactoryPhase, type DependencyGraph } from "./graph.js";
+import { buildDependencyGraph, findStackUnblockedIssues, detectCycles, filterByFactoryPhase, type DependencyGraph, type FactoryPhaseRejection } from "./graph.js";
 import { scanProjects } from "../projects/scanner.js";
 import { spawnSession } from "../bot/commands.js";
 import { getSession, setSession, getAllSessions } from "../state/sessions.js";
@@ -202,6 +202,7 @@ interface SchedulerDebug {
   stackReadyIssues: number[];
   stackUnblocked: Array<{ issue: number; baseDep: number }>;
   queued: number[];
+  factoryPhaseBlocked: FactoryPhaseRejection[];
   filteredUnblocked: Array<{ issue: number; baseDep: number }>;
   skippedHasPR: Array<{ issue: number; pr: number }>;
 }
@@ -314,7 +315,7 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
 
   // Apply factory phase ordering, but allow earlier-phase issues that are already stack-ready
   const issuesWithLabels = openIssues.map((issue) => ({ number: issue.number, labels: issue.labels }));
-  const phaseFiltered = filterByFactoryPhase(allStackUnblocked, issuesWithLabels, openIssueNumbers, stackReadyIssues);
+  const { passed: phaseFiltered, rejected: factoryPhaseBlocked } = filterByFactoryPhase(allStackUnblocked, issuesWithLabels, openIssueNumbers, stackReadyIssues);
 
   // Filter to only issues explicitly queued
   const queued = state.scheduledChains;
@@ -329,6 +330,7 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
     stackUnblocked: allStackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
     queued: [...queued],
     filteredUnblocked: stackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
+    factoryPhaseBlocked,
     skippedHasPR: [],
   };
 

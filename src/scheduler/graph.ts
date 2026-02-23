@@ -195,6 +195,20 @@ export function getIssueFactoryPhase(labels: string[]): FactoryPhase | null {
 	return null;
 }
 
+/** Reason a candidate was blocked by the factory phase gate. */
+export interface FactoryPhaseRejection {
+	issue: number;
+	app: string;
+	phase: string;
+	blockedByPhase: string;
+	blockerIssues: number[];
+}
+
+export interface FactoryPhaseFilterResult {
+	passed: StackUnblocked[];
+	rejected: FactoryPhaseRejection[];
+}
+
 /**
  * Filter stack-unblocked issues by factory phase ordering.
  *
@@ -212,7 +226,7 @@ export function filterByFactoryPhase(
 	allIssues: Array<{ number: number; labels: string[] }>,
 	openIssueNumbers: Set<number>,
 	stackReadyIssues: Set<number> = new Set(),
-): StackUnblocked[] {
+): FactoryPhaseFilterResult {
 	// Build a map: factory app → phase index → set of open issue numbers
 	const phaseMap = new Map<string, Map<number, Set<number>>>();
 
@@ -236,21 +250,38 @@ export function filterByFactoryPhase(
 	}
 
 	// Filter candidates: block if earlier phase has open issues
-	return candidates.filter((candidate) => {
+	const passed: StackUnblocked[] = [];
+	const rejected: FactoryPhaseRejection[] = [];
+
+	for (const candidate of candidates) {
 		const issue = allIssues.find((i) => i.number === candidate.issueNumber);
-		if (!issue) return true; // not in our issue list, pass through
+		if (!issue) { passed.push(candidate); continue; }
 
 		const fp = getIssueFactoryPhase(issue.labels);
-		if (!fp) return true; // not a factory issue, pass through
+		if (!fp) { passed.push(candidate); continue; }
 
 		const appPhases = phaseMap.get(fp.app);
-		if (!appPhases) return true;
+		if (!appPhases) { passed.push(candidate); continue; }
 
 		// Check all earlier phases for open issues
+		let blocked = false;
 		for (let i = 0; i < fp.phaseIndex; i++) {
 			const earlier = appPhases.get(i);
-			if (earlier && earlier.size > 0) return false; // earlier phase still active
+			if (earlier && earlier.size > 0) {
+				const blockedByPhase = FACTORY_PHASE_ORDER[i] ?? `phase-${i}`;
+				rejected.push({
+					issue: candidate.issueNumber,
+					app: fp.app,
+					phase: fp.phase,
+					blockedByPhase,
+					blockerIssues: [...earlier],
+				});
+				blocked = true;
+				break;
+			}
 		}
-		return true;
-	});
+		if (!blocked) passed.push(candidate);
+	}
+
+	return { passed, rejected };
 }

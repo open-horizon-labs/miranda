@@ -1550,6 +1550,12 @@
           if (d.stackUnblocked && d.stackUnblocked.length > 0) {
             dbg.push("Stack-unblocked (all): " + d.stackUnblocked.map(function (s) { return "#" + s.issue + " on #" + s.baseDep; }).join(", "));
           }
+          if (d.factoryPhaseBlocked && d.factoryPhaseBlocked.length > 0) {
+            dbg.push("Factory phase blocked:");
+            d.factoryPhaseBlocked.forEach(function (r) {
+              dbg.push("  #" + r.issue + " (" + r.app + ":" + r.phase + ") blocked by " + r.blockedByPhase + " phase: " + r.blockerIssues.map(function (n) { return "#" + n; }).join(", "));
+            });
+          }
           if (d.queued && d.queued.length > 0) {
             dbg.push("Queued chains: " + d.queued.map(function (n) { return "#" + n; }).join(", "));
           } else {
