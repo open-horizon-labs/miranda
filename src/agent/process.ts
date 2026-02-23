@@ -218,6 +218,17 @@ function buildSkillArgs(skill: SkillType, options: SkillOptions): string {
       }
       return baseBranch ? `${taskId} ${baseBranch}` : taskId;
     }
+    case "oh-join": {
+      if (!taskId) {
+        throw new Error("spawnAgent: issue number is required for oh-join skill");
+      }
+      if (!projectName) {
+        throw new Error("spawnAgent: projectName is required for oh-join skill");
+      }
+      validateIdSafe(taskId, "issueNumber");
+      validateIdSafe(projectName, "projectName");
+      return taskId;
+    }
     case "oh-merge": {
       if (!projectName) {
         throw new Error("spawnAgent: projectName is required for oh-merge skill");

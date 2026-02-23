@@ -464,6 +464,89 @@ async function handleStartIssue(
 }
 
 /**
+ * POST /api/projects/:name/issues/:num/join — Kick off oh-join for a multi-dependency issue.
+ */
+async function handleStartJoin(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  projectName: string,
+  issueNumber: string,
+  authedUser: TelegramUser
+): Promise<void> {
+  const projectPath = await resolveProject(projectName);
+  if (!projectPath) {
+    json(res, 404, { error: `Project "${projectName}" not found` });
+    return;
+  }
+
+  try {
+    await pullProject(projectPath);
+  } catch {
+    // Best-effort pull — continue even if it fails
+  }
+
+  const num = parseInt(issueNumber, 10);
+  if (isNaN(num) || num <= 0) {
+    json(res, 400, { error: "Invalid issue number" });
+    return;
+  }
+
+  try {
+    const { owner, repo } = await getRepoInfo(projectPath);
+    const issues = await getOpenIssues(owner, repo);
+    const issue = issues.find((i) => i.number === num);
+    if (!issue) {
+      json(res, 404, { error: `Issue #${num} is not open` });
+      return;
+    }
+    const dependsOn = parseDependencies(issue.body);
+    if (dependsOn.length < 2) {
+      json(res, 400, { error: `Issue #${num} is not a multi-dependency issue` });
+      return;
+    }
+
+    const chatId = authedUser.id;
+    const sessionKey = `oh-join-${projectName}-${issueNumber}`;
+    const existing = getSession(sessionKey);
+    if (existing) {
+      json(res, 409, {
+        error: `Join session already exists for ${projectName} #${issueNumber}`,
+        session: { taskId: existing.taskId, status: existing.status },
+      });
+      return;
+    }
+
+    const sessionId = await spawnSession("oh-join", issueNumber, chatId, {
+      projectPath,
+      projectName,
+    });
+
+    const session: Session = {
+      taskId: sessionKey,
+      sessionId,
+      skill: "oh-join",
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+    };
+    setSession(sessionKey, session);
+
+    json(res, 201, {
+      taskId: sessionKey,
+      sessionId,
+      issueNumber: num,
+    });
+  } catch (error) {
+    if (error instanceof GitHubRateLimitError) {
+      json(res, 429, { error: error.message });
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
  * POST /api/projects/:name/issues/:num/close — Close a GitHub issue.
  */
 async function handleCloseIssue(
@@ -1111,6 +1194,13 @@ export async function routeApi(
   const startMatch = pathname.match(/^\/api\/projects\/([^/]+)\/issues\/(\d+)\/start$/);
   if (startMatch && method === "POST") {
     await handleStartIssue(req, res, decodeURIComponent(startMatch[1]), startMatch[2], authedUser);
+    return true;
+  }
+
+  // POST /api/projects/:name/issues/:num/join
+  const joinMatch = pathname.match(/^\/api\/projects\/([^/]+)\/issues\/(\d+)\/join$/);
+  if (joinMatch && method === "POST") {
+    await handleStartJoin(req, res, decodeURIComponent(joinMatch[1]), joinMatch[2], authedUser);
     return true;
   }
 

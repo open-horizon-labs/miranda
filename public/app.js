@@ -459,6 +459,10 @@
     return set;
   }
 
+  function isMultiDependencyIssue(issue) {
+    return !!(issue && issue.dependsOn && issue.dependsOn.length > 1);
+  }
+
   function renderIssueNode(issue, childrenOf, depth) {
     var isBlocked = issue.blockedBy && issue.blockedBy.length > 0;
     var pr = issue.pr;
@@ -541,13 +545,14 @@
     var actions = document.createElement("div");
     actions.className = "issue-actions";
 
-    var startBtn = document.createElement("button");
-    var issueSessionId = selectedProject ? "oh-task-" + selectedProject + "-" + issue.number : null;
-    var hasActiveSession = issueSessionId && sessions.some(function (s) { return s.taskId === issueSessionId; });
-    if (hasActiveSession) {
+    var issueTaskSessionId = selectedProject ? "oh-task-" + selectedProject + "-" + issue.number : null;
+    var issueJoinSessionId = selectedProject ? "oh-join-" + selectedProject + "-" + issue.number : null;
+    var hasActiveTaskSession = issueTaskSessionId && sessions.some(function (s) { return s.taskId === issueTaskSessionId; });
+    var hasActiveJoinSession = issueJoinSessionId && sessions.some(function (s) { return s.taskId === issueJoinSessionId; });
+    if (hasActiveTaskSession || hasActiveJoinSession) {
       var runningBtn = document.createElement("span");
       runningBtn.className = "btn btn-in-progress";
-      runningBtn.textContent = "In Progress\u2026";
+      runningBtn.textContent = hasActiveJoinSession ? "Joining…" : "In Progress…";
       actions.appendChild(runningBtn);
     } else {
       var startBtn = document.createElement("button");
@@ -556,6 +561,15 @@
       startBtn.setAttribute("data-issue", issue.number);
       startBtn.addEventListener("click", handleStartClick);
       actions.appendChild(startBtn);
+
+      if (isMultiDependencyIssue(issue)) {
+        var joinBtn = document.createElement("button");
+        joinBtn.className = "btn btn-secondary";
+        joinBtn.textContent = "Join";
+        joinBtn.setAttribute("data-issue", issue.number);
+        joinBtn.addEventListener("click", handleJoinClick);
+        actions.appendChild(joinBtn);
+      }
 
       var closeBtn = document.createElement("button");
       closeBtn.className = "btn btn-danger";
@@ -742,12 +756,14 @@
           var actions = document.createElement('span');
           actions.className = 'factory-issue-actions';
 
-          var issueSessionId = selectedProject ? 'oh-task-' + selectedProject + '-' + issue.number : null;
-          var hasActiveSession = issueSessionId && sessions.some(function (s) { return s.taskId === issueSessionId; });
-          if (hasActiveSession) {
+          var issueTaskSessionId = selectedProject ? 'oh-task-' + selectedProject + '-' + issue.number : null;
+          var issueJoinSessionId = selectedProject ? 'oh-join-' + selectedProject + '-' + issue.number : null;
+          var hasActiveTaskSession = issueTaskSessionId && sessions.some(function (s) { return s.taskId === issueTaskSessionId; });
+          var hasActiveJoinSession = issueJoinSessionId && sessions.some(function (s) { return s.taskId === issueJoinSessionId; });
+          if (hasActiveTaskSession || hasActiveJoinSession) {
             var runSpan = document.createElement('span');
             runSpan.className = 'btn btn-in-progress btn-sm';
-            runSpan.textContent = 'In Progress\u2026';
+            runSpan.textContent = hasActiveJoinSession ? 'Joining…' : 'In Progress…';
             actions.appendChild(runSpan);
           } else {
             var startBtn = document.createElement('button');
@@ -756,6 +772,15 @@
             startBtn.setAttribute('data-issue', issue.number);
             startBtn.addEventListener('click', handleStartClick);
             actions.appendChild(startBtn);
+
+            if (isMultiDependencyIssue(issue)) {
+              var joinBtn = document.createElement('button');
+              joinBtn.className = 'btn btn-secondary btn-sm';
+              joinBtn.textContent = 'Join';
+              joinBtn.setAttribute('data-issue', issue.number);
+              joinBtn.addEventListener('click', handleJoinClick);
+              actions.appendChild(joinBtn);
+            }
           }
 
           var isQueued = queuedSet[issue.number];
@@ -957,6 +982,25 @@
       })
       .catch(function (err) {
         btn.disabled = false;
+        showToast(err.message, "error");
+      });
+  }
+
+  function handleJoinClick(e) {
+    var issueNum = e.currentTarget.getAttribute("data-issue");
+    if (!issueNum || !selectedProject) return;
+    if (!confirm("Start oh-join for issue #" + issueNum + "?")) return;
+    var btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Joining…";
+    api("POST", "/api/projects/" + encodeURIComponent(selectedProject) + "/issues/" + issueNum + "/join")
+      .then(function () {
+        showToast("Join started for issue #" + issueNum, "success");
+        return loadSessions().then(function () { renderIssues(); });
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = "Join";
         showToast(err.message, "error");
       });
   }

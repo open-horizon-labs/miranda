@@ -1,7 +1,7 @@
 // === Session State ===
 
 /** Supported skill types for Miranda */
-export type SkillType = "oh-task" | "oh-merge" | "oh-notes" | "oh-plan" | "oh-review" | "jira-plan";
+export type SkillType = "oh-task" | "oh-join" | "oh-merge" | "oh-notes" | "oh-plan" | "oh-review" | "jira-plan";
 
 /** UI request method type from oh-my-pi */
 export type UIRequestMethod = "select" | "confirm" | "input";
