@@ -1,12 +1,14 @@
 /**
  * Parse dependency references from an issue body.
  *
- * Recognizes patterns written by oh-plan and common variations:
+ * Recognizes patterns written by oh-plan/oh-task and common variations:
  * - **Depends on:** #43 (oh-plan standard format, with bold)
  * - *Depends on:* #43 (italic variant)
  * - Depends on: #43, #44 (comma-separated, with colon)
  * - Depends on #43 (without colon)
  * - Depends on: #43 and #44 (with "and" separator)
+ * - **Parent:** #43 (oh-task child issue format)
+ * - Parent: #43 (plain variant)
  *
  * Returns deduplicated array of issue numbers.
  */
@@ -22,9 +24,9 @@ export function parseDependencies(body: string | null | undefined): number[] {
     .replace(/~~[\s\S]*?~~/g, "")
     .replace(/<!--[\s\S]*?-->/g, "");
 
-  // Match "Depends on" with optional bold/italic markers and optional colon,
+  // Match "Depends on" or "Parent" with optional bold/italic markers and optional colon,
   // followed by one or more #N references separated by commas, "and", or whitespace
-  const pattern = /\*{0,2}Depends on:?\*{0,2}:?\s*(.+)/gi;
+  const pattern = /\*{0,2}(?:Depends on|Parent):?\*{0,2}:?\s*(.+)/gi;
 
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(normalizedBody)) !== null) {
