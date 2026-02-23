@@ -550,6 +550,7 @@
     // Children
     var children = childrenOf[issue.number] || [];
     if (children.length > 0) {
+      li.classList.add("has-children");
       var ul = document.createElement("ul");
       for (var c = 0; c < children.length; c++) {
         ul.appendChild(renderIssueNode(children[c], childrenOf, depth + 1));
