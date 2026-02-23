@@ -936,8 +936,8 @@
     api("POST", "/api/scheduler/" + encodeURIComponent(selectedProject) + "/trigger")
       .then(function (data) {
         var parts = [];
-        if (data.started && data.started.length > 0) {
-          parts.push("Started: " + data.started.map(function (n) { return "#" + n; }).join(", "));
+        if (data.stacked && data.stacked.length > 0) {
+          parts.push("Stacked: " + data.stacked.map(function (s) { return "#" + s.issue + " on #" + s.baseDep + " (" + s.baseBranch + ")"; }).join(", "));
         }
         if (data.alreadyRunning && data.alreadyRunning.length > 0) {
           parts.push("Already running: " + data.alreadyRunning.map(function (n) { return "#" + n; }).join(", "));
@@ -949,7 +949,38 @@
           parts.push("Circular deps detected!");
         }
         var msg = parts.length > 0 ? parts.join(". ") : "No unblocked issues found";
-        showToast(msg, data.started && data.started.length > 0 ? "success" : "info");
+        showToast(msg, data.stacked && data.stacked.length > 0 ? "success" : "info");
+
+        // Show debug info in scheduler status area
+        if (data.debug) {
+          var d = data.debug;
+          var dbg = [];
+          if (d.issuesWithDeps && d.issuesWithDeps.length > 0) {
+            dbg.push("Issues with deps: " + d.issuesWithDeps.map(function (i) { return "#" + i.number + " \u2192 " + i.dependsOn.map(function (n) { return "#" + n; }).join(","); }).join("; "));
+          } else {
+            dbg.push("No issues with dependencies found");
+          }
+          if (d.resolvedIssues && d.resolvedIssues.length > 0) {
+            dbg.push("Resolved: " + d.resolvedIssues.map(function (n) { return "#" + n; }).join(", "));
+          }
+          if (d.depCandidates && d.depCandidates.length > 0) {
+            dbg.push("Dep checks:");
+            d.depCandidates.forEach(function (c) {
+              var line = "  #" + c.issue + ": session=" + c.sessionStatus + " PR=" + (c.linkedPR || "none") + " CI=" + (c.ci || "-") + " CR=" + (c.coderabbit || "-") + " ready=" + c.stackReady;
+              if (c.reason) line += " (" + c.reason + ")";
+              dbg.push(line);
+            });
+          } else {
+            dbg.push("No dep candidates (no open issues are dependencies of other open issues)");
+          }
+          if (d.stackUnblocked && d.stackUnblocked.length > 0) {
+            dbg.push("Stack-unblocked: " + d.stackUnblocked.map(function (s) { return "#" + s.issue + " on #" + s.baseDep; }).join(", "));
+          }
+          $schedulerStatus.textContent = dbg.join("\n");
+          $schedulerStatus.style.whiteSpace = "pre-wrap";
+          $schedulerStatus.style.fontSize = "12px";
+        }
+
         return Promise.all([loadSessions(), loadSchedulerStatus()]);
       })
       .catch(function (err) {

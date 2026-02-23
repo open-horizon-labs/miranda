@@ -166,6 +166,25 @@ interface PollResult {
   alreadyRunning: number[];
   blocked: number[];
   cycles: number[][];
+  debug?: SchedulerDebug;
+}
+
+interface SchedulerDebug {
+  issuesWithDeps: Array<{ number: number; dependsOn: number[] }>;
+  resolvedIssues: number[];
+  depCandidates: DepCandidateDebug[];
+  stackReadyIssues: number[];
+  stackUnblocked: Array<{ issue: number; baseDep: number }>;
+}
+
+interface DepCandidateDebug {
+  issue: number;
+  sessionStatus: string | null;
+  linkedPR: number | null;
+  ci: string | null;
+  coderabbit: string | null;
+  stackReady: boolean;
+  reason?: string;
 }
 
 /**
@@ -259,10 +278,19 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   }
 
   // Find stack-ready deps (PR green + CR approved + session finished)
-  const { stackReadyIssues, branchMap } = await buildStackReadySet(
+  const { stackReadyIssues, branchMap, candidateDebug } = await buildStackReadySet(
     owner, repo, projectName, openPRs, openIssueNumbers, graph,
   );
   const stackUnblocked = findStackUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers, stackReadyIssues);
+
+  // Attach debug info
+  result.debug = {
+    issuesWithDeps: issuesWithDeps.filter((i) => i.dependsOn.length > 0).map((i) => ({ number: i.number, dependsOn: i.dependsOn })),
+    resolvedIssues: [...resolvedIssueNumbers],
+    depCandidates: candidateDebug,
+    stackReadyIssues: [...stackReadyIssues],
+    stackUnblocked: stackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
+  };
 
   if (stackUnblocked.length === 0) {
     checkTreeCompletion(projectName, state, openIssueNumbers);
@@ -374,9 +402,10 @@ async function buildStackReadySet(
   openPRs: GitHubPR[],
   openIssueNumbers: Set<number>,
   graph: DependencyGraph,
-): Promise<{ stackReadyIssues: Set<number>; branchMap: Map<number, string> }> {
+): Promise<{ stackReadyIssues: Set<number>; branchMap: Map<number, string>; candidateDebug: DepCandidateDebug[] }> {
   const stackReadyIssues = new Set<number>();
   const branchMap = new Map<number, string>();
+  const candidateDebug: DepCandidateDebug[] = [];
 
   // Collect all dep issue numbers that are open (potential stack candidates)
   const depCandidates = new Set<number>();
@@ -389,40 +418,54 @@ async function buildStackReadySet(
   }
 
   if (depCandidates.size === 0) {
-    return { stackReadyIssues, branchMap };
+    return { stackReadyIssues, branchMap, candidateDebug };
   }
 
   // For each dep candidate, check if it has a ready PR and no active session
   const checks = [...depCandidates].map(async (depIssue) => {
+    const entry: DepCandidateDebug = { issue: depIssue, sessionStatus: null, linkedPR: null, ci: null, coderabbit: null, stackReady: false };
+    candidateDebug.push(entry);
+
     // Must not have an active session
     const sessionKey = `oh-task-${projectName}-${depIssue}`;
     const session = getSession(sessionKey);
+    entry.sessionStatus = session ? session.status : "none";
     if (session && (session.status === "starting" || session.status === "running" || session.status === "waiting_input")) {
-      return; // Session still running
+      entry.reason = "session still active";
+      return;
     }
 
     // Must have a linked open PR
     const pr = findLinkedPR(openPRs, depIssue);
-    if (!pr) return;
+    if (!pr) {
+      entry.reason = "no linked PR found";
+      return;
+    }
+    entry.linkedPR = pr.number;
 
     // Check CI + CodeRabbit status
     try {
       const enrichment = await getPREnrichment(owner, repo, pr);
+      entry.ci = enrichment.ci.state;
+      entry.coderabbit = enrichment.coderabbit.reviewed ? (enrichment.coderabbit.state ?? "none") : "not_reviewed";
       const ciGreen = enrichment.ci.state === "success";
       const crOk = !enrichment.coderabbit.reviewed || enrichment.coderabbit.state === "APPROVED";
 
       if (ciGreen && crOk) {
         stackReadyIssues.add(depIssue);
         branchMap.set(depIssue, pr.head);
+        entry.stackReady = true;
+      } else {
+        entry.reason = `ci=${enrichment.ci.state} cr=${entry.coderabbit}`;
       }
     } catch (err) {
-      // Best-effort — skip this dep on API failure
+      entry.reason = `enrichment error: ${err instanceof Error ? err.message : String(err)}`;
       logError(err, `enrichment check for #${depIssue}`);
     }
   });
 
   await Promise.all(checks);
-  return { stackReadyIssues, branchMap };
+  return { stackReadyIssues, branchMap, candidateDebug };
 }
 
 /**
