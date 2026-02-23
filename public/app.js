@@ -437,6 +437,19 @@
     return { roots: roots, childrenOf: childrenOf, prMap: prMap };
   }
 
+  function getQueuedSet() {
+    var set = {};
+    if (schedulerStatus && schedulerStatus.projects && selectedProject) {
+      var proj = schedulerStatus.projects[selectedProject];
+      if (proj && proj.scheduledChains) {
+        for (var i = 0; i < proj.scheduledChains.length; i++) {
+          set[proj.scheduledChains[i]] = true;
+        }
+      }
+    }
+    return set;
+  }
+
   function renderIssueNode(issue, childrenOf, depth) {
     var isBlocked = issue.blockedBy && issue.blockedBy.length > 0;
     var pr = issue.pr;
@@ -543,7 +556,15 @@
       actions.appendChild(closeBtn);
     }
 
-
+    // Queue button for scheduler
+    var queuedSet = getQueuedSet();
+    var isQueued = queuedSet[issue.number];
+    var queueBtn = document.createElement("button");
+    queueBtn.className = "btn " + (isQueued ? "btn-queued" : "btn-queue");
+    queueBtn.textContent = isQueued ? "Queued" : "Queue";
+    queueBtn.setAttribute("data-issue", issue.number);
+    queueBtn.addEventListener("click", handleQueueClick);
+    actions.appendChild(queueBtn);
     card.appendChild(actions);
     li.appendChild(card);
 
@@ -719,6 +740,24 @@
       .then(function () {
         showToast("Issue #" + issueNum + " closed", "success");
         return loadProjectData();
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        showToast(err.message, "error");
+      });
+  }
+
+  function handleQueueClick(e) {
+    var issueNum = e.currentTarget.getAttribute("data-issue");
+    if (!issueNum || !selectedProject) return;
+    var btn = e.currentTarget;
+    var isQueued = btn.classList.contains("btn-queued");
+    var method = isQueued ? "DELETE" : "POST";
+    btn.disabled = true;
+    api(method, "/api/scheduler/" + encodeURIComponent(selectedProject) + "/queue/" + issueNum)
+      .then(function () {
+        showToast(isQueued ? "#" + issueNum + " removed from queue" : "#" + issueNum + " queued for auto-stacking", "success");
+        return loadSchedulerStatus().then(function () { renderIssues(); });
       })
       .catch(function (err) {
         btn.disabled = false;
@@ -982,7 +1021,15 @@
             dbg.push("No dep candidates (no open issues are dependencies of other open issues)");
           }
           if (d.stackUnblocked && d.stackUnblocked.length > 0) {
-            dbg.push("Stack-unblocked: " + d.stackUnblocked.map(function (s) { return "#" + s.issue + " on #" + s.baseDep; }).join(", "));
+            dbg.push("Stack-unblocked (all): " + d.stackUnblocked.map(function (s) { return "#" + s.issue + " on #" + s.baseDep; }).join(", "));
+          }
+          if (d.queued && d.queued.length > 0) {
+            dbg.push("Queued chains: " + d.queued.map(function (n) { return "#" + n; }).join(", "));
+          } else {
+            dbg.push("Queued chains: (none)");
+          }
+          if (d.filteredUnblocked && d.filteredUnblocked.length > 0) {
+            dbg.push("Will auto-start: " + d.filteredUnblocked.map(function (s) { return "#" + s.issue + " on #" + s.baseDep; }).join(", "));
           }
           $schedulerStatus.textContent = dbg.join("\n");
           $schedulerStatus.style.whiteSpace = "pre-wrap";

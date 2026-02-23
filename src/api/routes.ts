@@ -24,7 +24,7 @@ import {
 } from "./github.js";
 import type { Session } from "../types.js";
 import { subscribe, unsubscribe } from "./logs.js";
-import { getSchedulerStatus, enableProject, disableProject, triggerProject } from "../scheduler/watcher.js";
+import { getSchedulerStatus, enableProject, disableProject, triggerProject, queueChain, dequeueChain } from "../scheduler/watcher.js";
 
 /** Shutdown function for /api/restart. Set by setApiShutdownFn(). */
 let shutdownFn: (() => Promise<void>) | null = null;
@@ -1127,6 +1127,26 @@ export async function routeApi(
     }
     return true;
   }
+
+  // POST /api/scheduler/:project/queue/:issue
+  const queueMatch = pathname.match(/^\/api\/scheduler\/([^/]+)\/queue\/(\d+)$/);
+  if (queueMatch && method === "POST") {
+    const projectName = decodeURIComponent(queueMatch[1]);
+    const issueNumber = parseInt(queueMatch[2], 10);
+    queueChain(projectName, issueNumber);
+    json(res, 200, { queued: issueNumber });
+    return true;
+  }
+
+  // DELETE /api/scheduler/:project/queue/:issue
+  if (queueMatch && method === "DELETE") {
+    const projectName = decodeURIComponent(queueMatch[1]);
+    const issueNumber = parseInt(queueMatch[2], 10);
+    dequeueChain(projectName, issueNumber);
+    json(res, 200, { dequeued: issueNumber });
+    return true;
+  }
+
   // --- Admin routes ---
 
   // POST /api/selfupdate

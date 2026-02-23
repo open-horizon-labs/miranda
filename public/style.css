@@ -103,6 +103,16 @@ body {
   margin-left: auto;
 }
 
+.btn-queue {
+  background: rgba(100, 210, 255, 0.12);
+  color: var(--tg-theme-link-color);
+}
+
+.btn-queued {
+  background: var(--tg-theme-link-color);
+  color: #fff;
+}
+
 .btn-icon {
   width: 36px;
   height: 36px;

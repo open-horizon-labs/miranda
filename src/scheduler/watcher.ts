@@ -27,6 +27,8 @@ export interface ProjectSchedulerState {
   lastCheckAt: number; // epoch ms
   /** Set of all issue numbers we've seen in dependency trees. */
   trackedIssues: Set<number>;
+  /** Issue numbers explicitly queued for auto-stacking. */
+  scheduledChains: Set<number>;
   /** True once tree completion has been notified (prevents spam). */
   notifiedComplete: boolean;
   /** True once circular dependency notification has been sent (prevents spam). */
@@ -36,6 +38,7 @@ export interface ProjectSchedulerState {
 export interface SchedulerProjectStatus {
   enabled: boolean;
   lastCheckAt: number;
+  scheduledChains: number[];
 }
 export interface SchedulerStatus {
   running: boolean;
@@ -101,7 +104,7 @@ export function enableProject(projectName: string): void {
   if (existing) {
     existing.enabled = true;
   } else {
-    projectStates.set(projectName, { enabled: true, lastCheckAt: Date.now(), trackedIssues: new Set(), notifiedComplete: false, notifiedCycles: false });
+    projectStates.set(projectName, { enabled: true, lastCheckAt: Date.now(), trackedIssues: new Set(), scheduledChains: new Set(), notifiedComplete: false, notifiedCycles: false });
   }
 }
 
@@ -117,7 +120,7 @@ export function disableProject(projectName: string): void {
 export function getSchedulerStatus(): SchedulerStatus {
   const projects: Record<string, SchedulerProjectStatus> = {};
   for (const [name, state] of projectStates) {
-    projects[name] = { enabled: state.enabled, lastCheckAt: state.lastCheckAt };
+    projects[name] = { enabled: state.enabled, lastCheckAt: state.lastCheckAt, scheduledChains: [...state.scheduledChains] };
   }
   return {
     running,
@@ -125,6 +128,28 @@ export function getSchedulerStatus(): SchedulerStatus {
     maxConcurrentSessions: config.schedulerMaxConcurrent,
     projects,
   };
+}
+
+/** Queue an issue chain for auto-stacking. All issues in the chain are added. */
+export function queueChain(projectName: string, issueNumber: number): void {
+  let state = projectStates.get(projectName);
+  if (!state) {
+    state = { enabled: true, lastCheckAt: Date.now(), trackedIssues: new Set(), scheduledChains: new Set(), notifiedComplete: false, notifiedCycles: false };
+    projectStates.set(projectName, state);
+  }
+  state.scheduledChains.add(issueNumber);
+}
+
+/** Remove an issue from the scheduler queue. */
+export function dequeueChain(projectName: string, issueNumber: number): void {
+  const state = projectStates.get(projectName);
+  if (state) state.scheduledChains.delete(issueNumber);
+}
+
+/** Get queued issue numbers for a project. */
+export function getQueuedChains(projectName: string): number[] {
+  const state = projectStates.get(projectName);
+  return state ? [...state.scheduledChains] : [];
 }
 
 /** Manually trigger a poll for a specific project. */
@@ -175,6 +200,8 @@ interface SchedulerDebug {
   depCandidates: DepCandidateDebug[];
   stackReadyIssues: number[];
   stackUnblocked: Array<{ issue: number; baseDep: number }>;
+  queued: number[];
+  filteredUnblocked: Array<{ issue: number; baseDep: number }>;
 }
 
 interface DepCandidateDebug {
@@ -212,7 +239,7 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   // Get state (create if needed)
   let state = projectStates.get(projectName);
   if (!state) {
-    state = { enabled: true, lastCheckAt: Date.now(), trackedIssues: new Set(), notifiedComplete: false, notifiedCycles: false };
+    state = { enabled: true, lastCheckAt: Date.now(), trackedIssues: new Set(), scheduledChains: new Set(), notifiedComplete: false, notifiedCycles: false };
     projectStates.set(projectName, state);
     if (!manual) {
       return result; // First automatic run — just record timestamp
@@ -281,7 +308,26 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   const { stackReadyIssues, branchMap, candidateDebug } = await buildStackReadySet(
     owner, repo, projectName, openPRs, openIssueNumbers, graph,
   );
-  const stackUnblocked = findStackUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers, stackReadyIssues);
+  const allStackUnblocked = findStackUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers, stackReadyIssues);
+
+  // Filter to only issues whose chain was explicitly queued
+  const queued = state.scheduledChains;
+  const stackUnblocked = allStackUnblocked.filter((s) => {
+    // Walk up the dependency chain from this issue — if any ancestor is queued, include it
+    const visited = new Set<number>();
+    const queue = [s.issueNumber];
+    while (queue.length > 0) {
+      const n = queue.pop()!;
+      if (queued.has(n)) return true;
+      if (visited.has(n)) continue;
+      visited.add(n);
+      const node = graph.nodes.get(n);
+      if (node) {
+        for (const dep of node.dependsOn) queue.push(dep);
+      }
+    }
+    return false;
+  });
 
   // Attach debug info
   result.debug = {
@@ -289,7 +335,9 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
     resolvedIssues: [...resolvedIssueNumbers],
     depCandidates: candidateDebug,
     stackReadyIssues: [...stackReadyIssues],
-    stackUnblocked: stackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
+    stackUnblocked: allStackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
+    queued: [...queued],
+    filteredUnblocked: stackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
   };
 
   if (stackUnblocked.length === 0) {
@@ -330,6 +378,8 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
     if (spawned === "started") {
       result.stacked.push({ issue: issueNumber, baseDep, baseBranch });
       slotsRemaining--;
+      // Propagate queue: add this issue so its children get auto-started too
+      state.scheduledChains.add(issueNumber);
       notify(`🤖 Auto-starting *#${issueNumber}* stacked on *#${baseDep}* (\`${baseBranch}\`) for *${projectName}*`);
     }
   }
