@@ -310,24 +310,9 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   );
   const allStackUnblocked = findStackUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers, stackReadyIssues);
 
-  // Filter to only issues whose chain was explicitly queued
+  // Filter to only issues explicitly queued
   const queued = state.scheduledChains;
-  const stackUnblocked = allStackUnblocked.filter((s) => {
-    // Walk up the dependency chain from this issue — if any ancestor is queued, include it
-    const visited = new Set<number>();
-    const queue = [s.issueNumber];
-    while (queue.length > 0) {
-      const n = queue.pop()!;
-      if (queued.has(n)) return true;
-      if (visited.has(n)) continue;
-      visited.add(n);
-      const node = graph.nodes.get(n);
-      if (node) {
-        for (const dep of node.dependsOn) queue.push(dep);
-      }
-    }
-    return false;
-  });
+  const stackUnblocked = allStackUnblocked.filter((s) => queued.has(s.issueNumber));
 
   // Attach debug info
   result.debug = {
