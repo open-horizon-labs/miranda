@@ -24,11 +24,12 @@ async function cleanupWorktree(session: { worktreePath?: string; projectPath?: s
   if (!session.worktreePath || !session.projectPath) return;
 
   try {
-    const { exec } = await import("child_process");
+    const { execFile } = await import("child_process");
     const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-    await execAsync(
-      `git worktree remove ${JSON.stringify(session.worktreePath)} --force`,
+    const execFileAsync = promisify(execFile);
+    await execFileAsync(
+      "git",
+      ["worktree", "remove", session.worktreePath, "--force"],
       { cwd: session.projectPath }
     );
     console.log(`[agent:${sessionId}] Worktree removed: ${session.worktreePath}`);

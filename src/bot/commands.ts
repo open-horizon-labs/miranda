@@ -90,14 +90,15 @@ export async function spawnSession(
   const sessionId = generateSessionId(skill, identifier);
 
   // Create git worktree for session isolation
-  const { exec } = await import("child_process");
+  const { execFile } = await import("child_process");
   const { promisify } = await import("util");
-  const execAsync = promisify(exec);
+  const execFileAsync = promisify(execFile);
 
   const targetBranch = options?.baseBranch ?? await getDefaultBranch(projectPath) ?? "main";
   const worktreePath = join(projectPath, ".worktrees", sessionId);
-  await execAsync(
-    `git worktree add ${worktreePath} --detach origin/${targetBranch}`,
+  await execFileAsync(
+    "git",
+    ["worktree", "add", worktreePath, "--detach", `origin/${targetBranch}`],
     { cwd: projectPath }
   );
 
@@ -391,25 +392,26 @@ export async function cleanupOrphanedSessions(): Promise<number> {
 /**
  * Prune orphaned git worktrees for all discovered projects on startup.
  * Runs `git worktree prune` per project to clean up stale worktree references.
+ * Returns the number of projects successfully pruned.
  */
 export async function discoverOrphanedSessions(): Promise<number> {
-  const { exec } = await import("child_process");
+  const { execFile } = await import("child_process");
   const { promisify } = await import("util");
-  const execAsync = promisify(exec);
+  const execFileAsync = promisify(execFile);
 
   const projects = await scanProjects();
-  let pruned = 0;
+  let projectsPruned = 0;
 
   for (const project of projects) {
     try {
-      await execAsync("git worktree prune", { cwd: project.path });
-      pruned++;
+      await execFileAsync("git", ["worktree", "prune"], { cwd: project.path });
+      projectsPruned++;
     } catch (err) {
       console.warn(`Failed to prune worktrees for ${project.name}:`, err);
     }
   }
 
-  return pruned;
+  return projectsPruned;
 }
 
 async function handleCleanup(ctx: Context): Promise<void> {
