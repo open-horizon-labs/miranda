@@ -125,7 +125,10 @@
 	}
 
 	.action-btn {
-		display: inline-block;
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		font-size: var(--text-xs);
 		font-family: inherit;
 		background: var(--ground-2);
@@ -133,9 +136,17 @@
 		border: none;
 		border-radius: 4px;
 		padding: 0.25rem 0.5rem;
+		min-height: 24px;
+		min-width: 24px;
 		cursor: pointer;
 		text-decoration: none;
 		transition: background var(--duration-status) var(--ease-out-expo);
+	}
+
+	.action-btn::after {
+		content: '';
+		position: absolute;
+		inset: -12px -8px;
 	}
 
 	.action-btn:hover {
