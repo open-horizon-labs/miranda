@@ -39,7 +39,7 @@
 					{#if item.reason === 'review-needed' && item.prUrl}
 						<a class="action-btn" href={item.prUrl} target="_blank" rel="noopener noreferrer">{actionLabels[item.reason]}</a>
 					{:else}
-						<button class="action-btn" type="button">{actionLabels[item.reason]}</button>
+						<button class="action-btn" type="button" disabled>{actionLabels[item.reason]}</button>
 					{/if}
 				</span>
 			</div>
@@ -140,5 +140,10 @@
 
 	.action-btn:hover {
 		background: var(--ground-3);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 </style>

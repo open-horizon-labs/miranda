@@ -132,13 +132,15 @@ function buildAttentionItems(apps: AppRegionData[]): AttentionItem[] {
 					});
 				}
 
-				// Awaiting review (open PR, CI passing or pending, not yet reviewed)
+				// Awaiting review: only flag when we have enrichment data to confirm state.
+				// Without enrichment, we can't distinguish "not yet reviewed" from "data unavailable".
 				if (
+					enrichment &&
 					issue.pr.state.toLowerCase() === 'open' &&
-					enrichment?.ci.state !== 'failure' &&
-					enrichment?.ci.state !== 'error' &&
+					enrichment.ci.state !== 'failure' &&
+					enrichment.ci.state !== 'error' &&
 					issue.pr.mergeable !== false &&
-					enrichment?.coderabbit?.reviewed !== true
+					!enrichment.coderabbit?.reviewed
 				) {
 					items.push({
 						id: `review-needed-${app.name}-${issue.number}`,
@@ -262,6 +264,7 @@ export class PortfolioStore {
 	}
 
 	start(): void {
+		if (this._interval) return;
 		this.refresh();
 		this._interval = setInterval(() => this.refresh(), POLL_INTERVAL);
 	}
