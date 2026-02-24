@@ -15,10 +15,10 @@
 	};
 </script>
 
-{#if items.length > 0}
-	<div class="attention-strip" aria-live="polite" role="log">
+<div class="attention-strip" aria-live="polite" role="log" aria-relevant="additions removals">
+	{#if items.length > 0}
 		{#each items as item (item.id)}
-			<div class="attention-item" aria-label="{item.project} #{item.issueNumber}: {item.title} — {item.reason}">
+			<div class="attention-item" aria-label="{item.project} #{item.issueNumber}: {item.title} — {actionLabels[item.reason]}">
 				<span class="reason-icon reason-{item.reason}">
 					{#if item.reason === 'asking'}
 						<svg viewBox="0 0 14 14" class="icon heartbeat-asking" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="currentColor"/></svg>
@@ -44,8 +44,8 @@
 				</span>
 			</div>
 		{/each}
-	</div>
-{/if}
+	{/if}
+</div>
 
 <style>
 	.attention-strip {
