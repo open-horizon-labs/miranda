@@ -160,8 +160,8 @@ export function detectCycles(graph: DependencyGraph): number[][] {
 // Factory phase labels
 // ---------------------------------------------------------------------------
 
-/** Ordered factory phases. Lower index = earlier phase. */
-const FACTORY_PHASE_ORDER: readonly string[] = ["build", "audit", "critique"];
+/** Ordered standard factory phases. Lower index = earlier phase. */
+const STANDARD_PHASE_ORDER: readonly string[] = ["build", "audit", "critique"];
 
 export interface FactoryPhase {
 	app: string;
@@ -178,8 +178,8 @@ export function parseFactoryLabel(label: string): FactoryPhase | null {
 	const parts = label.split(":");
 	if (parts.length !== 3 || parts[0] !== "factory") return null;
 	const [, app, phase] = parts;
-	const phaseIndex = FACTORY_PHASE_ORDER.indexOf(phase);
-	if (phaseIndex === -1) return null;
+	const phaseIndex = STANDARD_PHASE_ORDER.indexOf(phase);
+	if (phaseIndex === -1) return { app, phase, phaseIndex: -1 };
 	return { app, phase, phaseIndex };
 }
 
@@ -241,6 +241,7 @@ export function filterByFactoryPhase(
 			appPhases = new Map();
 			phaseMap.set(fp.app, appPhases);
 		}
+		if (fp.phaseIndex < 0) continue; // custom phases don't participate in phase gating
 		let issueSet = appPhases.get(fp.phaseIndex);
 		if (!issueSet) {
 			issueSet = new Set();
@@ -259,16 +260,16 @@ export function filterByFactoryPhase(
 
 		const fp = getIssueFactoryPhase(issue.labels);
 		if (!fp) { passed.push(candidate); continue; }
+		if (fp.phaseIndex < 0) { passed.push(candidate); continue; } // custom phases pass through
 
 		const appPhases = phaseMap.get(fp.app);
 		if (!appPhases) { passed.push(candidate); continue; }
-
-		// Check all earlier phases for open issues
+		// Check all earlier standard phases for open issues
 		let blocked = false;
 		for (let i = 0; i < fp.phaseIndex; i++) {
 			const earlier = appPhases.get(i);
 			if (earlier && earlier.size > 0) {
-				const blockedByPhase = FACTORY_PHASE_ORDER[i] ?? `phase-${i}`;
+				const blockedByPhase = STANDARD_PHASE_ORDER[i] ?? `phase-${i}`;
 				rejected.push({
 					issue: candidate.issueNumber,
 					app: fp.app,

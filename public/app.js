@@ -606,8 +606,11 @@
     return li;
   }
 
-  var FACTORY_PHASES = ['build', 'audit', 'critique'];
-  var FACTORY_PHASE_LABELS = { build: 'Build', audit: 'Audit', critique: 'Critique' };
+  var STANDARD_PHASE_ORDER = { build: 0, audit: 1, critique: 2 };
+
+  function phaseDisplayLabel(phase) {
+    return phase.charAt(0).toUpperCase() + phase.slice(1);
+  }
 
   function detectFactoryPipelines() {
     // Scan open issues for factory:<app>:<phase> labels
@@ -621,7 +624,6 @@
         if (!m) continue;
         var app = m[1];
         var phase = m[2];
-        if (FACTORY_PHASES.indexOf(phase) === -1) continue;
         if (!apps[app]) apps[app] = {};
         if (!apps[app][phase]) apps[app][phase] = [];
         apps[app][phase].push(issue);
@@ -633,13 +635,51 @@
     var appNames = Object.keys(apps);
     for (var a = 0; a < appNames.length; a++) {
       var appName = appNames[a];
+      var phaseNames = Object.keys(apps[appName]);
+
+      // Build issue-number-to-phase map for this app
+      var issuePhaseMap = {};
+      for (var pn = 0; pn < phaseNames.length; pn++) {
+        var pIssues = apps[appName][phaseNames[pn]];
+        for (var pi = 0; pi < pIssues.length; pi++) {
+          issuePhaseMap[pIssues[pi].number] = phaseNames[pn];
+        }
+      }
+
+      // For custom phases, compute sort order from dependencies
+      var customPhaseOrder = {};
+      for (var pn = 0; pn < phaseNames.length; pn++) {
+        var pName = phaseNames[pn];
+        if (STANDARD_PHASE_ORDER.hasOwnProperty(pName)) continue;
+        var maxDepPhase = -1;
+        var pIssues = apps[appName][pName];
+        for (var pi = 0; pi < pIssues.length; pi++) {
+          var deps = pIssues[pi].dependsOn || [];
+          for (var di = 0; di < deps.length; di++) {
+            var depPhase = issuePhaseMap[deps[di]];
+            if (depPhase && STANDARD_PHASE_ORDER.hasOwnProperty(depPhase)) {
+              var depIdx = STANDARD_PHASE_ORDER[depPhase];
+              if (depIdx > maxDepPhase) maxDepPhase = depIdx;
+            }
+          }
+        }
+        customPhaseOrder[pName] = maxDepPhase >= 0 ? maxDepPhase + 0.5 : 1000;
+      }
+
+      phaseNames.sort(function(a, b) {
+        var aOrder = STANDARD_PHASE_ORDER.hasOwnProperty(a) ? STANDARD_PHASE_ORDER[a] : (customPhaseOrder[a] !== undefined ? customPhaseOrder[a] : 1000);
+        var bOrder = STANDARD_PHASE_ORDER.hasOwnProperty(b) ? STANDARD_PHASE_ORDER[b] : (customPhaseOrder[b] !== undefined ? customPhaseOrder[b] : 1000);
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
+
       var phases = [];
-      for (var p = 0; p < FACTORY_PHASES.length; p++) {
-        var phaseName = FACTORY_PHASES[p];
+      for (var p = 0; p < phaseNames.length; p++) {
+        var phaseName = phaseNames[p];
         var openIssues = apps[appName][phaseName] || [];
         phases.push({
           name: phaseName,
-          label: FACTORY_PHASE_LABELS[phaseName],
+          label: phaseDisplayLabel(phaseName),
           issues: openIssues,
           open: openIssues.length
         });
