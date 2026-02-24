@@ -210,8 +210,14 @@ describe("parseFactoryLabel", () => {
 		assert.strictEqual(parseFactoryLabel("bug"), null);
 	});
 
-	it("returns null for unknown phase", () => {
-		assert.strictEqual(parseFactoryLabel("factory:dm:deploy"), null);
+	it("accepts arbitrary phase with phaseIndex -1", () => {
+		const result = parseFactoryLabel("factory:dm:deploy");
+		assert.deepStrictEqual(result, { app: "dm", phase: "deploy", phaseIndex: -1 });
+	});
+
+	it("accepts gameplay phase with phaseIndex -1", () => {
+		const result = parseFactoryLabel("factory:dm:gameplay");
+		assert.deepStrictEqual(result, { app: "dm", phase: "gameplay", phaseIndex: -1 });
 	});
 
 	it("returns null for malformed label", () => {
@@ -377,5 +383,53 @@ describe("filterByFactoryPhase", () => {
 
 		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
 		assert.deepStrictEqual(passed, [{ issueNumber: 200, baseDep: 199 }]);
+	});
+
+	it("custom phase issues pass through phase gate", () => {
+		const candidates: StackUnblocked[] = [
+			{ issueNumber: 30, baseDep: 20 },
+		];
+		const allIssues = [
+			{ number: 20, labels: ["factory:dm:audit"] },
+			{ number: 30, labels: ["factory:dm:gameplay"] },
+		];
+		const open = new Set([20, 30]);
+		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
+		assert.deepStrictEqual(passed, [{ issueNumber: 30, baseDep: 20 }]);
+	});
+
+	it("custom phase issues do not block standard phases", () => {
+		const candidates: StackUnblocked[] = [
+			{ issueNumber: 22, baseDep: 20 },
+		];
+		const allIssues = [
+			{ number: 20, labels: ["factory:dm:audit"] },
+			{ number: 21, labels: ["factory:dm:gameplay"] },
+			{ number: 22, labels: ["factory:dm:critique"] },
+		];
+		const open = new Set([21, 22]);
+		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
+		assert.deepStrictEqual(passed, [{ issueNumber: 22, baseDep: 20 }]);
+	});
+
+	it("mixed standard and custom phases with blocking", () => {
+		const candidates: StackUnblocked[] = [
+			{ issueNumber: 21, baseDep: 20 },
+			{ issueNumber: 22, baseDep: 20 },
+			{ issueNumber: 30, baseDep: 20 },
+		];
+		const allIssues = [
+			{ number: 20, labels: ["factory:dm:audit"] },
+			{ number: 21, labels: ["factory:dm:audit"] },
+			{ number: 22, labels: ["factory:dm:critique"] },
+			{ number: 30, labels: ["factory:dm:gameplay"] },
+		];
+		const open = new Set([20, 21, 22, 30]);
+		const { passed, rejected } = filterByFactoryPhase(candidates, allIssues, open);
+		const passedNumbers = passed.map((p) => p.issueNumber);
+		assert.ok(passedNumbers.includes(21), "audit fix passes");
+		assert.ok(passedNumbers.includes(30), "custom gameplay passes through");
+		assert.ok(!passedNumbers.includes(22), "critique still blocked by audit");
+		assert.strictEqual(rejected.length, 1);
 	});
 });
