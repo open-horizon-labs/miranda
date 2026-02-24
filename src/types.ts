@@ -10,10 +10,14 @@ export interface Session {
   taskId: string;
   /** Session identifier - process ID from agent process */
   sessionId: string;
-  skill: SkillType;
+  skill?: SkillType;
   status: "starting" | "running" | "waiting_input" | "stopped";
   startedAt: Date;
+  /** Timestamp of last tool execution — used by Heimdall for stale detection */
+  lastToolActivityAt?: Date;
   chatId: number; // Telegram chat for notifications
+  /** Opaque label for session tracking (used by generic spawn, replaces skill as identifier) */
+  label?: string;
   pendingQuestion?: PendingQuestion;
   awaitingFreeText?: AwaitingFreeText;
   /** Pending UI request ID from agent (for extension_ui_response) */

@@ -51,7 +51,12 @@ export function handleAgentEvent(agent: AgentProcess, event: RpcEvent): void {
       console.error(`[agent:${sessionId}] Extension error:`, event.error);
       break;
 
+    case "tool_execution_start":
+      updateLastToolActivity(sessionId);
+      break;
+
     case "tool_execution_end":
+      updateLastToolActivity(sessionId);
       handleToolExecutionEnd(sessionId, event);
       break;
 
@@ -63,7 +68,6 @@ export function handleAgentEvent(agent: AgentProcess, event: RpcEvent): void {
     case "message_start":
     case "message_end":
     case "message_update":
-    case "tool_execution_start":
     case "tool_execution_update":
       // Verbose event logging (could be gated by a debug flag)
       // console.debug(`[agent:${sessionId}] ${event.type}`);
@@ -72,6 +76,16 @@ export function handleAgentEvent(agent: AgentProcess, event: RpcEvent): void {
     default:
       console.warn(`[agent:${sessionId}] Unknown event type:`, (event as { type: string }).type);
   }
+}
+
+/**
+ * Update lastToolActivityAt on the session for stale detection.
+ */
+function updateLastToolActivity(sessionId: string): void {
+  const session = findSessionBySessionId(sessionId);
+  if (!session) return;
+  session.lastToolActivityAt = new Date();
+  setSession(session.taskId, session);
 }
 
 /**
