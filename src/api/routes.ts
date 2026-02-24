@@ -442,7 +442,7 @@ async function handleStartIssue(
     if (baseBranch) {
       spawnOptions.baseBranch = baseBranch;
     }
-    const sessionId = await spawnSession("oh-task", issueNumber, chatId, spawnOptions);
+    const { sessionId, worktreePath } = await spawnSession("oh-task", issueNumber, chatId, spawnOptions);
 
     const session: Session = {
       taskId: sessionKey,
@@ -451,6 +451,8 @@ async function handleStartIssue(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -518,7 +520,7 @@ async function handleStartJoin(
       return;
     }
 
-    const sessionId = await spawnSession("oh-join", issueNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-join", issueNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -530,6 +532,8 @@ async function handleStartJoin(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -622,7 +626,7 @@ async function handleStartNotes(
   }
 
   try {
-    const sessionId = await spawnSession("oh-notes", prNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-notes", prNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -634,6 +638,8 @@ async function handleStartNotes(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -682,7 +688,7 @@ async function handleStartCI(
   }
 
   try {
-    const sessionId = await spawnSession("oh-ci", prNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-ci", prNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -694,6 +700,8 @@ async function handleStartCI(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -742,7 +750,7 @@ async function handleStartConflict(
   }
 
   try {
-    const sessionId = await spawnSession("oh-conflict", prNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-conflict", prNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -754,6 +762,8 @@ async function handleStartConflict(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -802,7 +812,7 @@ async function handleStartPlan(
   const sessionKey = `oh-plan-${projectName}-${timestamp}`;
 
   try {
-    const sessionId = await spawnSession("oh-plan", description, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-plan", description, chatId, {
       projectPath,
       projectName,
     });
@@ -814,6 +824,8 @@ async function handleStartPlan(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 

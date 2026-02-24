@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { Bot, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import {
@@ -61,7 +62,7 @@ export interface SpawnOptions {
 
 /**
  * Spawn a new agent session.
- * Returns the session ID on success.
+ * Returns an object with the session ID and worktree path on success.
  *
  * Event handling is wired up automatically using handleAgentEvent and handleAgentExit
  * from agent/events.ts, which routes extension_ui requests to Telegram.
@@ -71,7 +72,7 @@ export async function spawnSession(
   taskId: string | undefined,
   chatId: number,
   options?: SpawnOptions
-): Promise<string> {
+): Promise<{ sessionId: string; worktreePath: string }> {
   const projectPath = options?.projectPath ?? config.defaultProject;
   if (!projectPath) {
     throw new Error("No project path specified and no default project configured");
@@ -88,9 +89,21 @@ export async function spawnSession(
   const identifier = taskId ?? options?.projectName ?? "unknown";
   const sessionId = generateSessionId(skill, identifier);
 
+  // Create git worktree for session isolation
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  const targetBranch = options?.baseBranch ?? await getDefaultBranch(projectPath) ?? "main";
+  const worktreePath = join(projectPath, ".worktrees", sessionId);
+  await execAsync(
+    `git worktree add ${worktreePath} --detach origin/${targetBranch}`,
+    { cwd: projectPath }
+  );
+
   // Spawn the agent with event handlers wired up
   const agent = spawnAgent({
-    cwd: projectPath,
+    cwd: worktreePath,
     skill,
     sessionId,
     onEvent: (event: RpcEvent) => handleAgentEvent(agent, event),
@@ -103,7 +116,7 @@ export async function spawnSession(
   // Send the expanded skill content as the initial prompt
   sendPrompt(agent, skillConfig.skillPrompt);
 
-  return sessionId;
+  return { sessionId, worktreePath };
 }
 
 /**
@@ -376,14 +389,27 @@ export async function cleanupOrphanedSessions(): Promise<number> {
 }
 
 /**
- * Discover orphaned agents on startup.
- * With the new agent process manager, agents don't persist across restarts,
- * so this function now returns 0.
+ * Prune orphaned git worktrees for all discovered projects on startup.
+ * Runs `git worktree prune` per project to clean up stale worktree references.
  */
 export async function discoverOrphanedSessions(): Promise<number> {
-  // Agent processes don't survive Miranda restarts (unlike tmux sessions)
-  // This function is kept for API compatibility but does nothing meaningful
-  return 0;
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+
+  const projects = await scanProjects();
+  let pruned = 0;
+
+  for (const project of projects) {
+    try {
+      await execAsync("git worktree prune", { cwd: project.path });
+      pruned++;
+    } catch (err) {
+      console.warn(`Failed to prune worktrees for ${project.name}:`, err);
+    }
+  }
+
+  return pruned;
 }
 
 async function handleCleanup(ctx: Context): Promise<void> {
@@ -533,7 +559,7 @@ async function handleOhMerge(ctx: Context): Promise<void> {
   });
 
   try {
-    const sessionId = await spawnSession("oh-merge", undefined, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-merge", undefined, chatId, {
       projectPath: project.path,
       projectName: project.name,
     });
@@ -545,6 +571,8 @@ async function handleOhMerge(ctx: Context): Promise<void> {
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath: project.path,
     };
     setSession(sessionId, session);
 
@@ -612,7 +640,7 @@ async function handleOhNotes(ctx: Context): Promise<void> {
   await ctx.reply(`Starting oh-notes for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
 
   try {
-    const sessionId = await spawnSession("oh-notes", prNumber, chatId, { projectPath, projectName });
+    const { sessionId, worktreePath } = await spawnSession("oh-notes", prNumber, chatId, { projectPath, projectName });
 
     const session: Session = {
       taskId: sessionKey,
@@ -621,6 +649,8 @@ async function handleOhNotes(ctx: Context): Promise<void> {
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -685,7 +715,7 @@ async function handleOhCi(ctx: Context): Promise<void> {
   await ctx.reply(`Starting oh-ci for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
 
   try {
-    const sessionId = await spawnSession("oh-ci", prNumber, chatId, { projectPath, projectName });
+    const { sessionId, worktreePath } = await spawnSession("oh-ci", prNumber, chatId, { projectPath, projectName });
 
     const session: Session = {
       taskId: sessionKey,
@@ -694,6 +724,8 @@ async function handleOhCi(ctx: Context): Promise<void> {
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -757,7 +789,7 @@ async function handleOhConflict(ctx: Context): Promise<void> {
   await ctx.reply(`Starting oh-conflict for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
 
   try {
-    const sessionId = await spawnSession("oh-conflict", prNumber, chatId, { projectPath, projectName });
+    const { sessionId, worktreePath } = await spawnSession("oh-conflict", prNumber, chatId, { projectPath, projectName });
 
     const session: Session = {
       taskId: sessionKey,
@@ -766,6 +798,8 @@ async function handleOhConflict(ctx: Context): Promise<void> {
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -833,7 +867,7 @@ async function handleOhReview(ctx: Context): Promise<void> {
   await ctx.reply(`Starting oh-review for ${projectName} PR #${prNumber}...`, { parse_mode: "Markdown" });
 
   try {
-    const sessionId = await spawnSession("oh-review", prNumber, chatId, { projectPath, projectName });
+    const { sessionId, worktreePath } = await spawnSession("oh-review", prNumber, chatId, { projectPath, projectName });
 
     const session: Session = {
       taskId: sessionKey,
@@ -842,6 +876,8 @@ async function handleOhReview(ctx: Context): Promise<void> {
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -996,7 +1032,7 @@ Examples:
       if (baseBranch) {
         spawnOptions.baseBranch = baseBranch;
       }
-      const sessionId = await spawnSession("oh-task", issue, chatId, spawnOptions);
+      const { sessionId, worktreePath } = await spawnSession("oh-task", issue, chatId, spawnOptions);
 
       const sessionKey = `oh-task-${projectName}-${issue}`;
       const session: Session = {
@@ -1006,6 +1042,8 @@ Examples:
         status: "running",
         startedAt: new Date(),
         chatId,
+        worktreePath,
+        projectPath,
       };
       setSession(sessionKey, session);
       results.push({ issue, success: true, sessionId });
@@ -1160,7 +1198,7 @@ Examples:
   });
 
   try {
-    const sessionId = await spawnSession("oh-plan", description, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-plan", description, chatId, {
       projectPath,
       projectName,
     });
@@ -1172,6 +1210,8 @@ Examples:
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -1694,7 +1734,7 @@ export async function spawnOhTaskForIssue(
       return { success: false, sessionKey, error: `Pull failed: ${pullResult.error}` };
     }
 
-    const sessionId = await spawnSession("oh-task", issueNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-task", issueNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -1706,6 +1746,8 @@ export async function spawnOhTaskForIssue(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
     return { success: true, sessionKey, sessionId };

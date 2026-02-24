@@ -14,6 +14,10 @@ export interface Session {
   status: "starting" | "running" | "waiting_input" | "stopped";
   startedAt: Date;
   chatId: number; // Telegram chat for notifications
+  /** Path to the git worktree directory for this session (for cleanup) */
+  worktreePath?: string;
+  /** Path to the main project directory (for worktree cleanup commands) */
+  projectPath?: string;
   pendingQuestion?: PendingQuestion;
   awaitingFreeText?: AwaitingFreeText;
   /** Pending UI request ID from agent (for extension_ui_response) */

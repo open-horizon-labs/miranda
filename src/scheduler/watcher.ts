@@ -417,7 +417,7 @@ async function trySpawnIssue(
   if (existing) return "already_running";
 
   try {
-    const sessionId = await spawnSession("oh-task", String(issueNumber), chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-task", String(issueNumber), chatId, {
       projectPath,
       projectName,
       baseBranch,
@@ -430,6 +430,8 @@ async function trySpawnIssue(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
     return "started";
