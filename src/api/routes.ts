@@ -280,8 +280,14 @@ async function handleSpawnSession(
     return;
   }
 
+  // Validate cwd is within PROJECTS_DIR to prevent directory traversal
+  if (!(await isPathWithin(body.cwd, config.projectsDir))) {
+    json(res, 403, { error: "cwd must be within PROJECTS_DIR" });
+    return;
+  }
+
   const label = body.label?.trim() || undefined;
-  const sessionId = `spawn-${label ?? "generic"}-${Date.now()}`;
+  const sessionId = `spawn-${label ?? "generic"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const chatId = authedUser.id;
 
   try {
