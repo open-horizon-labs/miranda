@@ -1390,6 +1390,28 @@ async function handleOvermindWriteback(req: IncomingMessage, res: ServerResponse
 }
 
 /**
+ * GET /api/portfolio/snapshot — one-shot snapshot for the Overmind daemon.
+ * Authentication: localhost-only (same as writeback).
+ * Returns the last computed PortfolioState, or 503 if not yet available.
+ */
+function handlePortfolioSnapshot(req: IncomingMessage, res: ServerResponse): void {
+  const remoteAddr = req.socket.remoteAddress ?? "";
+  const isLocalhost = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
+  if (!isLocalhost) {
+    json(res, 403, { error: "Snapshot endpoint is localhost-only" });
+    return;
+  }
+
+  const snapshot = getLastSnapshot();
+  if (!snapshot) {
+    json(res, 503, { error: "Portfolio state not yet computed" });
+    return;
+  }
+
+  json(res, 200, snapshot);
+}
+
+/**
  * Route an API request to the appropriate handler.
  * Returns true if a route matched, false otherwise.
  */
@@ -1424,6 +1446,12 @@ export async function routeApi(
   }
 
   // Overmind write-back — localhost-only, no Telegram auth required
+  // Overmind snapshot read — localhost-only, no Telegram auth required
+  if (pathname === "/api/portfolio/snapshot" && method === "GET") {
+    handlePortfolioSnapshot(req, res);
+    return true;
+  }
+
   if (pathname === "/api/portfolio/overmind" && method === "POST") {
     await handleOvermindWriteback(req, res);
     return true;
