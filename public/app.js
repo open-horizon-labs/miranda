@@ -648,13 +648,13 @@
 
       // For custom phases, compute sort order from dependencies
       var customPhaseOrder = {};
-      for (var pn = 0; pn < phaseNames.length; pn++) {
-        var pName = phaseNames[pn];
+      for (var cn = 0; cn < phaseNames.length; cn++) {
+        var pName = phaseNames[cn];
         if (STANDARD_PHASE_ORDER.hasOwnProperty(pName)) continue;
         var maxDepPhase = -1;
-        var pIssues = apps[appName][pName];
-        for (var pi = 0; pi < pIssues.length; pi++) {
-          var deps = pIssues[pi].dependsOn || [];
+        var cIssues = apps[appName][pName];
+        for (var ci = 0; ci < cIssues.length; ci++) {
+          var deps = cIssues[ci].dependsOn || [];
           for (var di = 0; di < deps.length; di++) {
             var depPhase = issuePhaseMap[deps[di]];
             if (depPhase && STANDARD_PHASE_ORDER.hasOwnProperty(depPhase)) {
