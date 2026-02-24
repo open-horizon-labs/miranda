@@ -47,10 +47,14 @@ let shutdownFn: ShutdownFn | undefined;
 /**
  * Generate a unique session ID for a skill invocation.
  * Format: <skill>-<identifier>-<timestamp>
+ * The identifier is sanitized to prevent path traversal.
  */
 function generateSessionId(skill: SkillType, identifier: string): string {
   const timestamp = Date.now();
-  return `${skill}-${identifier}-${timestamp}`;
+  // Sanitize identifier: strip path separators, traversal sequences, and
+  // collapse to safe chars. This prevents path.join from escaping .worktrees/
+  const safe = identifier.replace(/[/\\:*?"<>|.]+/g, "_").slice(0, 80);
+  return `${skill}-${safe}-${timestamp}`;
 }
 
 /** Options for spawning a session */
@@ -103,16 +107,23 @@ export async function spawnSession(
   );
 
   // Spawn the agent with event handlers wired up
-  const agent = spawnAgent({
-    cwd: worktreePath,
-    skill,
-    sessionId,
-    onEvent: (event: RpcEvent) => handleAgentEvent(agent, event),
-    onExit: (code, signal) => handleAgentExit(sessionId, code, signal),
-    onError: (err) => {
-      console.error(`[session:${sessionId}] Agent error:`, err);
-    },
-  });
+  let agent: AgentProcess;
+  try {
+    agent = spawnAgent({
+      cwd: worktreePath,
+      skill,
+      sessionId,
+      onEvent: (event: RpcEvent) => handleAgentEvent(agent, event),
+      onExit: (code, signal) => handleAgentExit(sessionId, code, signal),
+      onError: (err) => {
+        console.error(`[session:${sessionId}] Agent error:`, err);
+      },
+    });
+  } catch (err) {
+    // Clean up the worktree we just created
+    await execFileAsync("git", ["worktree", "remove", worktreePath, "--force"], { cwd: projectPath }).catch(() => {});
+    throw err;
+  }
 
   // Send the expanded skill content as the initial prompt
   sendPrompt(agent, skillConfig.skillPrompt);
