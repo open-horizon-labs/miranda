@@ -15,6 +15,7 @@ import type {
 } from "./process.js";
 import type { Question } from "../types.js";
 import { emitLogEvent, closeSession as closeLogSession } from "../api/logs.js";
+import { onAgentEvent as notifyPortfolio } from "../portfolio/index.js";
 
 // Bot reference for sending Telegram messages
 // Set during startup by calling setBot()
@@ -37,6 +38,9 @@ export function handleAgentEvent(agent: AgentProcess, event: RpcEvent): void {
 
   // Fan-out to SSE log subscribers
   emitLogEventForRpc(sessionId, event);
+
+  // Notify portfolio state module
+  notifyPortfolio(event.type);
 
   switch (event.type) {
     case "extension_ui_request":
