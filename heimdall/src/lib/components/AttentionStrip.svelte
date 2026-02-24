@@ -146,4 +146,10 @@
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.attention-item {
+			animation: none;
+		}
+	}
 </style>
