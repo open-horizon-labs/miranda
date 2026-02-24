@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-24
 **Scope:** All components on `issue/121` branch
-**Method:** Static code analysis against WCAG 2.1 AA, OKLCH theming spec, performance budgets
+**Method:** Static code analysis against WCAG 2.2 AA, OKLCH theming spec, performance budgets
 
 ---
 
@@ -14,11 +14,11 @@ Computed approximate contrast ratios from OKLCH lightness values:
 
 | Pair | Light | Dark | Threshold | Verdict |
 |------|-------|------|-----------|---------|
-| `--ground-3` on `--ground-0` | 2.43:1 | 2.60:1 | 3.0:1 (large) | **FAIL** |
+| `--ground-3` on `--ground-0` | 2.43:1 | 2.60:1 | 4.5:1 (normal) | **FAIL** |
 | `--ground-4` on `--ground-0` | 4.06:1 | 4.41:1 | 4.5:1 (normal) | **FAIL** |
 | `--ground-5` on `--ground-0` | 7.04:1 | 7.74:1 | 4.5:1 (normal) | PASS |
 | `--attention` on `--ground-1` | 2.42:1 | 5.05:1 | 4.5:1 (normal) | **FAIL light** |
-| `--ground-3` on `--ground-1` | 2.19:1 | — | 3.0:1 (large) | **FAIL** |
+| `--ground-3` on `--ground-1` | 2.19:1 | — | 4.5:1 (normal) | **FAIL** |
 
 **Affected elements:**
 - Phase labels (`PhaseColumn .phase-label`) use `--ground-3` at `--text-xs` — fails AA for normal AND large text
@@ -60,10 +60,11 @@ Computed approximate contrast ratios from OKLCH lightness values:
 ### 1.5 Touch Targets
 
 - `action-btn` in AttentionStrip: padding `0.25rem 0.5rem` at `--text-xs` (~0.72rem) yields ~19px height
-- WCAG 2.5.8 requires minimum 44x44px for touch targets
-- This is **less than half** the required minimum
+- WCAG 2.5.8 (Level AA, WCAG 2.2) requires minimum 24x24 CSS pixels for touch targets
+- The 44x44px threshold from platform guidelines (Apple HIG, Material) and WCAG 2.5.5 (Level AAA) is the stronger recommendation
+- At ~19px, the button fails both the 24px AA floor and the 44px best-practice target
 
-**Fix:** Increase action-btn to `min-height: 44px; min-width: 44px;` or use larger touch-area technique with `::after` pseudo-element.
+**Fix:** Increase action-btn to at least `min-height: 24px; min-width: 24px;` for WCAG 2.5.8 AA compliance. For best-practice touch UX, target 44px using `::after` pseudo-element tap area expansion.
 
 ### 1.6 Reduced Motion
 
@@ -105,7 +106,7 @@ Computed approximate contrast ratios from OKLCH lightness values:
 ### 2.4 Initial Render
 
 - SPA with `ssr: false`, `prerender: true` — HTML shell is prerendered but content requires JS + API
-- **Issue:** No loading skeleton or indicator while `portfolio.loading === true` — users see empty space
+- **Issue:** No loading skeleton or indicator while `portfolio.loading === true` — users see a blank screen
 - First meaningful content depends on API response latency
 - The `loading` state IS tracked in the store but the page doesn't render a skeleton for it
 
@@ -206,16 +207,18 @@ These are warm orange tints that work in light mode but are wrong in dark mode (
 | F2 | Major | A11y | No focus indicators (`:focus-visible`) on any interactive element | #129 |
 | F3 | Major | A11y | No keyboard navigation through regions/issues | #129 |
 | F4 | Major | A11y | Missing ARIA live regions for attention strip updates | #130 |
-| F5 | Major | A11y | Touch targets at ~19px, below 44px minimum | #131 |
+| F5 | Major | A11y | Touch targets at ~19px, below 24px AA minimum (WCAG 2.5.8) | #131 |
 | F6 | Major | A11y | Reduced motion: component-scoped animations not suppressed | #132 |
 | F7 | Major | Theming | Hardcoded rgba in temperature backgrounds (not OKLCH, not dark-mode aware) | #133 |
-| F8 | Major | Performance | No loading skeleton — empty screen until API responds | #134 |
+| F8 | Major | Performance | No loading skeleton — blank screen until API responds | #134 |
 | F9 | Minor | Performance | Temperature background transition triggers paint (not compositable) | — |
 | F10 | Minor | A11y | AttentionStrip SVGs missing aria-hidden | #130 |
-| F11 | Minor | Responsive | Only 1 of 3 container query breakpoints implemented | — |
-| F12 | Minor | Performance | No @font-face metric fallbacks for layout shift prevention | — |
+| F11 | Minor | A11y | Missing aria-label on attention items (reason + action) | #130 |
+| F12 | Minor | A11y | Phase column section missing aria-label/aria-labelledby | #130 |
+| F13 | Minor | Responsive | Only 1 of 3 container query breakpoints implemented | — |
+| F14 | Minor | Performance | No @font-face metric fallbacks for layout shift prevention | — |
 
-Minor findings (F9, F11, F12) without fix issues are deferred — address opportunistically during fix work.
+Minor findings without fix issues (F9, F13, F14) are deferred — address opportunistically during fix work. Minor ARIA findings (F10-F12) are tracked under #130.
 
 ### What Passed
 
