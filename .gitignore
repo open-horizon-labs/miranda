@@ -15,3 +15,9 @@ env
 package-lock.json
 
 .worktrees
+
+
+# Heimdall surface
+heimdall/node_modules/
+heimdall/.svelte-kit/
+heimdall/build/

@@ -1,0 +1,185 @@
+/* ═══════════ Design Tokens ═══════════ */
+
+:root {
+	/* Color — Light mode */
+	--ground-0: oklch(96% 0.01 75);
+	--ground-1: oklch(92% 0.015 75);
+	--ground-2: oklch(84% 0.02 75);
+	--ground-3: oklch(65% 0.025 75);
+	--ground-4: oklch(50% 0.02 75);
+	--ground-5: oklch(35% 0.015 75);
+
+	--pulse-active: oklch(75% 0.12 75);
+	--done: oklch(72% 0.08 145);
+	--review: oklch(68% 0.06 250);
+	--attention: oklch(62% 0.14 45);
+	--waiting: oklch(70% 0.04 250);
+
+	color-scheme: light dark;
+
+	/* Typography — major third (1.25) */
+	--text-xs: clamp(0.64rem, 0.6rem + 0.2vw, 0.72rem);
+	--text-sm: clamp(0.8rem, 0.75rem + 0.25vw, 0.9rem);
+	--text-base: clamp(1rem, 0.95rem + 0.3vw, 1.125rem);
+	--text-lg: clamp(1.25rem, 1.15rem + 0.4vw, 1.406rem);
+	--text-xl: clamp(1.563rem, 1.45rem + 0.5vw, 1.758rem);
+	--text-2xl: clamp(1.953rem, 1.8rem + 0.65vw, 2.197rem);
+
+	--font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+	--font-data: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', sans-serif;
+
+	/* Motion */
+	--duration-status: 500ms;
+	--duration-drift: 800ms;
+	--duration-appear: 300ms;
+	--duration-disappear: 600ms;
+	--duration-attention: 400ms;
+	--duration-temperature: 1000ms;
+
+	--ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ═══════════ Dark Mode ═══════════ */
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--ground-0: oklch(18% 0.02 55);
+		--ground-1: oklch(22% 0.025 55);
+		--ground-2: oklch(28% 0.02 55);
+		--ground-3: oklch(45% 0.02 55);
+		--ground-4: oklch(60% 0.015 55);
+		--ground-5: oklch(78% 0.01 55);
+
+		--pulse-active: oklch(78% 0.15 75);
+		--done: oklch(75% 0.1 145);
+		--review: oklch(72% 0.08 250);
+		--attention: oklch(68% 0.18 45);
+		--waiting: oklch(72% 0.05 250);
+	}
+}
+
+/* ═══════════ Reset ═══════════ */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+html {
+	height: 100%;
+}
+
+body {
+	height: 100%;
+	font-family: var(--font-data);
+	font-size: var(--text-base);
+	background: var(--ground-0);
+	color: var(--ground-5);
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════ Heartbeat Keyframes ═══════════ */
+
+@keyframes heartbeat-working {
+	0%, 100% { opacity: 0.6; transform: scale(0.95); }
+	50% { opacity: 1; transform: scale(1.05); }
+}
+
+@keyframes heartbeat-thinking {
+	0%, 100% { opacity: 0.65; transform: scale(0.97); }
+	50% { opacity: 1; transform: scale(1.03); }
+}
+
+@keyframes heartbeat-starting {
+	0%, 100% { opacity: 0.5; transform: scale(0.9); }
+	50% { opacity: 1; transform: scale(1.1); }
+}
+
+@keyframes heartbeat-done {
+	from { opacity: 1; }
+	to { opacity: 0.2; }
+}
+
+@keyframes rotate-slow {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+/* ═══════════ Heartbeat Utilities ═══════════ */
+
+.heartbeat-working {
+	animation: heartbeat-working 3s ease-in-out infinite;
+}
+
+.heartbeat-thinking {
+	animation: heartbeat-thinking 2s ease-in-out infinite;
+}
+
+.heartbeat-starting {
+	animation: heartbeat-starting 1s ease-in-out infinite;
+}
+
+.heartbeat-asking {
+	opacity: 1;
+	transform: scale(1.05);
+}
+
+.heartbeat-error {
+	animation: heartbeat-working 3s ease-in-out 1;
+	opacity: 0.4;
+}
+
+.heartbeat-blocked {
+	opacity: 0.3;
+}
+
+.heartbeat-done {
+	animation: heartbeat-done 2s ease-out forwards;
+}
+
+/* ═══════════ Reduced Motion ═══════════ */
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+
+	.heartbeat-working,
+	.heartbeat-thinking,
+	.heartbeat-starting {
+		animation: none;
+		opacity: 0.85;
+	}
+
+	.heartbeat-asking {
+		opacity: 1;
+	}
+}
+
+/* ═══════════ Utilities ═══════════ */
+
+.small-caps {
+	font-variant-caps: small-caps;
+	letter-spacing: 0.05em;
+}
+
+.tabular-nums {
+	font-variant-numeric: tabular-nums;
+}
+
+.font-display {
+	font-family: var(--font-display);
+}
+
+.font-data {
+	font-family: var(--font-data);
+}

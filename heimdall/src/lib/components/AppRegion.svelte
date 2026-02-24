@@ -1,0 +1,80 @@
+<script lang="ts">
+	import type { AppRegionData, Phase, AgentInfo } from '$lib/types.js';
+	import PhaseColumn from '$lib/components/PhaseColumn.svelte';
+
+	interface Props {
+		app: AppRegionData;
+	}
+
+	const PHASES: Phase[] = ['queued', 'building', 'review', 'done'];
+
+	let { app }: Props = $props();
+
+	let agents = $derived(Array.from(app.agents.values()));
+
+	let activeCount = $derived(
+		agents.filter((a) => a.status === 'working' || a.status === 'thinking' || a.status === 'starting').length
+	);
+
+	let askingCount = $derived(
+		agents.filter((a) => a.status === 'asking').length
+	);
+
+	let temperature = $derived.by(() => {
+		if (askingCount > 0) return 'var(--attention-tint, rgba(255, 180, 60, 0.06))';
+		if (activeCount >= 3) return 'rgba(255, 140, 50, 0.05)';
+		if (activeCount >= 1) return 'rgba(255, 160, 80, 0.03)';
+		return 'transparent';
+	});
+</script>
+
+<div class="app-region" style:--region-temp={temperature}>
+	<div class="app-name">
+		{app.name}
+	</div>
+	<div class="phase-flow">
+		{#each PHASES as phase (phase)}
+			<PhaseColumn
+				{phase}
+				issues={app.phases[phase]}
+				agents={app.agents}
+				enrichment={app.enrichment}
+			/>
+		{/each}
+	</div>
+</div>
+
+<style>
+	.app-region {
+		display: grid;
+		grid-template-columns: minmax(8rem, auto) 1fr;
+		gap: 1rem;
+		padding: 1rem 0;
+		border-bottom: 1px solid var(--ground-2);
+		container-type: inline-size;
+		background: var(--region-temp, transparent);
+		transition: background var(--duration-temperature, 1s) var(--ease-out-quart);
+	}
+
+	.app-name {
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
+		color: var(--ground-5);
+		display: flex;
+		align-items: center;
+	}
+
+	.phase-flow {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	@container (max-width: 768px) {
+		.app-region {
+			grid-template-columns: 1fr;
+		}
+		.phase-flow {
+			flex-direction: column;
+		}
+	}
+</style>
