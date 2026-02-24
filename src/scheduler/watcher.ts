@@ -77,6 +77,7 @@ export function startScheduler(): void {
 
   const interval = config.schedulerPollInterval;
   console.log(`   Scheduler: polling every ${interval / 1000}s, max ${config.schedulerMaxConcurrent} concurrent`);
+  console.log("   Scheduler: phase ordering governed by dependency graph (dependsOn/blockedBy)");
 
   // Run first poll after a short delay (let bot finish starting)
   setTimeout(() => {
