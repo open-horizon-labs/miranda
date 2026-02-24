@@ -100,6 +100,8 @@ export async function spawnSession(
 
   const targetBranch = options?.baseBranch ?? await getDefaultBranch(projectPath) ?? "main";
   const worktreePath = join(projectPath, ".worktrees", sessionId);
+  // Fetch the target branch to ensure the remote-tracking ref is up-to-date
+  await execFileAsync("git", ["fetch", "origin", targetBranch], { cwd: projectPath });
   await execFileAsync(
     "git",
     ["worktree", "add", worktreePath, "--detach", `origin/${targetBranch}`],
