@@ -892,7 +892,6 @@ async function handleUpdateBranch(
   try {
     const { owner, repo } = await getRepoInfo(projectPath);
     const result = await updatePRBranch(owner, repo, num);
-    invalidateListingCache(owner, repo, { prs: true });
     json(res, 200, result);
   } catch (error) {
     if (error instanceof GitHubRateLimitError) {
@@ -1259,6 +1258,27 @@ export async function routeApi(
   // All /api/* routes require Telegram initData authentication
   const authedUser = requireAuth(req, res);
   if (!authedUser) return true;
+
+  // Centralized cache invalidation: any POST to an issue, PR, or plan route
+  // busts all caches for that repo after the response is sent.
+  if (method === "POST") {
+    const projectMutationMatch = pathname.match(
+      /^\/api\/projects\/([^/]+)\/(?:issues\/\d+|prs\/\d+|plan)\b/
+    );
+    if (projectMutationMatch) {
+      const mutProject = decodeURIComponent(projectMutationMatch[1]);
+      res.on("finish", () => {
+        if (res.statusCode && res.statusCode < 400) {
+          resolveProject(mutProject)
+            .then((path) => (path ? getRepoInfo(path) : null))
+            .then((info) => {
+              if (info) invalidateListingCache(info.owner, info.repo);
+            })
+            .catch(() => {});
+        }
+      });
+    }
+  }
 
   // --- Existing routes ---
 
