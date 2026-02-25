@@ -5,14 +5,14 @@
 	--ground-0: oklch(96% 0.01 75);
 	--ground-1: oklch(92% 0.015 75);
 	--ground-2: oklch(84% 0.02 75);
-	--ground-3: oklch(65% 0.025 75);
-	--ground-4: oklch(50% 0.02 75);
+	--ground-3: oklch(54% 0.025 75);
+	--ground-4: oklch(42% 0.02 75);
 	--ground-5: oklch(35% 0.015 75);
 
 	--pulse-active: oklch(75% 0.12 75);
 	--done: oklch(72% 0.08 145);
 	--review: oklch(68% 0.06 250);
-	--attention: oklch(62% 0.14 45);
+	--attention: oklch(52% 0.14 45);
 	--waiting: oklch(70% 0.04 250);
 
 	color-scheme: light dark;
@@ -47,8 +47,8 @@
 		--ground-0: oklch(18% 0.02 55);
 		--ground-1: oklch(22% 0.025 55);
 		--ground-2: oklch(28% 0.02 55);
-		--ground-3: oklch(45% 0.02 55);
-		--ground-4: oklch(60% 0.015 55);
+		--ground-3: oklch(50% 0.02 55);
+		--ground-4: oklch(62% 0.015 55);
 		--ground-5: oklch(78% 0.01 55);
 
 		--pulse-active: oklch(78% 0.15 75);
