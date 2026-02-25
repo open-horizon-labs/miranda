@@ -53,7 +53,7 @@
 		{/if}
 	</main>
 
-	<footer class="attention-strip-container">
+	<footer class="attention-strip-container" class:has-attention={!portfolio.loading && portfolio.attention.length > 0}>
 		{#if portfolio.loading}
 			<div class="skel-attention" aria-hidden="true">
 				<div class="skel-block skel-attention-item"></div>
@@ -91,6 +91,14 @@
 		bottom: 0;
 		border-top: 1px solid var(--ground-2);
 		background: var(--ground-1);
+		transition:
+			background var(--duration-attention) var(--ease-out-expo),
+			border-color var(--duration-attention) var(--ease-out-expo);
+	}
+
+	.attention-strip-container.has-attention {
+		background: color-mix(in oklch, var(--attention) 8%, var(--ground-1));
+		border-top-color: color-mix(in oklch, var(--attention) 25%, var(--ground-2));
 	}
 
 	.error-banner {
