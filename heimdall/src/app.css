@@ -118,8 +118,8 @@ body {
 }
 
 @keyframes heartbeat-done {
-	from { opacity: 1; }
-	to { opacity: 0.2; }
+	from { opacity: 1; transform: scale(1.05); }
+	to { opacity: 0.75; transform: scale(1); }
 }
 
 @keyframes rotate-slow {
@@ -156,7 +156,7 @@ body {
 }
 
 .heartbeat-done {
-	animation: heartbeat-done 2s ease-out forwards;
+	animation: heartbeat-done 1s ease-out forwards;
 }
 
 /* ═══════════ Reduced Motion ═══════════ */
