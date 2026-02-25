@@ -60,6 +60,13 @@ export interface IssuesResponse {
 			url: string;
 		} | null;
 	}>;
+	closedIssues: Array<{
+		number: number;
+		title: string;
+		state: string;
+		labels: string[];
+		closedAt: string | null;
+	}>;
 }
 
 export interface PRsResponse {

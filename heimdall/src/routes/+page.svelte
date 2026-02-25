@@ -20,6 +20,7 @@
 			activeAgents={portfolio.activeAgents}
 			totalCapacity={portfolio.totalCapacity}
 			loading={portfolio.loading}
+			doneToday={portfolio.doneToday}
 		/>
 	</header>
 

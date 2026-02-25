@@ -16,7 +16,7 @@
 		done: 'Done',
 	};
 
-	const PHASE_GROW: Record<Phase, number> = {
+	const BASE_GROW: Record<Phase, number> = {
 		queued: 1,
 		building: 2,
 		review: 1.5,
@@ -25,7 +25,15 @@
 
 	let { phase, issues, agents, enrichment }: Props = $props();
 
-	let grow = $derived(PHASE_GROW[phase]);
+	// Done column grows proportionally to completed volume:
+	// base 0.5 + 0.15 per item, capped at 2.5 so it doesn't dominate.
+	let grow = $derived(
+		phase === 'done'
+			? Math.min(0.5 + issues.length * 0.15, 2.5)
+			: BASE_GROW[phase]
+	);
+
+	let doneCount = $derived(phase === 'done' ? issues.length : 0);
 </script>
 
 <section
@@ -33,7 +41,12 @@
 	style:flex-grow={grow}
 	aria-label={PHASE_LABELS[phase]}
 >
-	<header class="phase-label small-caps">{PHASE_LABELS[phase]}</header>
+	<header class="phase-label small-caps">
+		{PHASE_LABELS[phase]}
+		{#if doneCount > 0}
+			<span class="done-count tabular-nums">{doneCount}</span>
+		{/if}
+	</header>
 	<div class="issue-list" role="list">
 		{#each issues as issue (issue.number)}
 			<IssueMarker
@@ -81,6 +94,14 @@
 	}
 
 	.phase-done {
-		opacity: 0.7;
+		background: color-mix(in oklch, var(--done) 4%, transparent);
+		border-radius: 4px;
+	}
+
+	.done-count {
+		font-family: var(--font-data);
+		font-size: var(--text-xs);
+		color: var(--done);
+		margin-inline-start: 0.25rem;
 	}
 </style>
