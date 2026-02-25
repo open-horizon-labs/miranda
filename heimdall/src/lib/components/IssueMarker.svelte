@@ -223,4 +223,10 @@
 	.rotate-slow {
 		animation: rotate-slow 4s linear infinite;
 	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.rotate-slow {
+			animation: none;
+		}
+	}
 </style>
