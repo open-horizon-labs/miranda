@@ -21,9 +21,9 @@
 	);
 
 	let temperature = $derived.by(() => {
-		if (askingCount > 0) return 'var(--attention-tint, rgba(255, 180, 60, 0.06))';
-		if (activeCount >= 3) return 'rgba(255, 140, 50, 0.05)';
-		if (activeCount >= 1) return 'rgba(255, 160, 80, 0.03)';
+		if (askingCount > 0) return 'var(--temperature-asking)';
+		if (activeCount >= 3) return 'var(--temperature-hot)';
+		if (activeCount >= 1) return 'var(--temperature-warm)';
 		return 'transparent';
 	});
 </script>

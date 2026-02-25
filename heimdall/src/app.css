@@ -15,6 +15,11 @@
 	--attention: oklch(62% 0.14 45);
 	--waiting: oklch(70% 0.04 250);
 
+	/* Temperature — region background tints */
+	--temperature-asking: oklch(82% 0.14 65 / 0.06);
+	--temperature-hot: oklch(75% 0.16 55 / 0.05);
+	--temperature-warm: oklch(80% 0.12 75 / 0.03);
+
 	color-scheme: light dark;
 
 	/* Typography — major third (1.25) */
@@ -56,6 +61,11 @@
 		--review: oklch(72% 0.08 250);
 		--attention: oklch(68% 0.18 45);
 		--waiting: oklch(72% 0.05 250);
+
+		/* Temperature — region background tints */
+		--temperature-asking: oklch(75% 0.12 65 / 0.08);
+		--temperature-hot: oklch(70% 0.14 55 / 0.07);
+		--temperature-warm: oklch(75% 0.10 75 / 0.04);
 	}
 }
 
