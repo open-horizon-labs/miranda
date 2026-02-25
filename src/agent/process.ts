@@ -124,8 +124,8 @@ export type RpcEvent =
 export interface AgentProcess {
   /** Unique process ID (same as OS pid) */
   pid: number;
-  /** The skill being run */
-  skill: SkillType;
+  /** The skill being run (undefined for generic spawns) */
+  skill?: SkillType;
   /** Internal ID for session tracking */
   sessionId: string;
   /** The child process handle */
@@ -147,8 +147,8 @@ const agents = new Map<string, AgentProcess>();
 export interface SpawnAgentOptions {
   /** Working directory for the agent */
   cwd: string;
-  /** Skill type */
-  skill: SkillType;
+  /** Skill type (omit for generic prompt-based spawns) */
+  skill?: SkillType;
   /** Session ID for tracking */
   sessionId: string;
   /** Event handler for RPC events */

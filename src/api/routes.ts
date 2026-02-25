@@ -28,6 +28,8 @@ import {
 import type { Session } from "../types.js";
 import { subscribe, unsubscribe } from "./logs.js";
 import { getSchedulerStatus, enableProject, disableProject, triggerProject, queueChain, dequeueChain } from "../scheduler/watcher.js";
+import { spawnAgent, sendPrompt, type RpcEvent } from "../agent/process.js";
+import { handleAgentEvent, handleAgentExit } from "../agent/events.js";
 
 /** Shutdown function for /api/restart. Set by setApiShutdownFn(). */
 let shutdownFn: (() => Promise<void>) | null = null;
@@ -133,10 +135,12 @@ export function handleGetSessions(_req: IncomingMessage, res: ServerResponse): v
   const result = sessions.map((s) => ({
     taskId: s.taskId,
     sessionId: s.sessionId,
-    skill: s.skill,
+    skill: s.skill ?? null,
+    label: s.label ?? null,
     status: s.status,
     startedAt: s.startedAt.toISOString(),
     elapsed: formatElapsed(s.startedAt),
+    lastToolActivityAt: s.lastToolActivityAt?.toISOString() ?? null,
     pendingQuestion: s.pendingQuestion
       ? {
           messageId: s.pendingQuestion.messageId,
@@ -250,6 +254,70 @@ export async function handleStopSession(
     const method = graceful ? "stopped" : "killed";
     json(res, 200, { taskId, method });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    json(res, 500, { error: message });
+  }
+}
+
+/**
+ * POST /api/sessions/spawn — Generic prompt-agnostic spawn endpoint.
+ * Body: { prompt: string, cwd: string, label?: string }
+ * Returns: { sessionId: string }
+ */
+async function handleSpawnSession(
+  req: IncomingMessage,
+  res: ServerResponse,
+  authedUser: TelegramUser
+): Promise<void> {
+  const body = await parseJsonBody<{ prompt?: string; cwd?: string; label?: string }>(req);
+
+  if (!body?.prompt || typeof body.prompt !== "string" || !body.prompt.trim()) {
+    json(res, 400, { error: "Missing or empty 'prompt' field" });
+    return;
+  }
+  if (!body.cwd || typeof body.cwd !== "string" || !body.cwd.trim()) {
+    json(res, 400, { error: "Missing or empty 'cwd' field" });
+    return;
+  }
+
+  // Validate cwd is within PROJECTS_DIR to prevent directory traversal
+  if (!(await isPathWithin(body.cwd, config.projectsDir))) {
+    json(res, 403, { error: "cwd must be within PROJECTS_DIR" });
+    return;
+  }
+
+  const label = body.label?.trim() || undefined;
+  const sessionId = `spawn-${label ?? "generic"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const chatId = authedUser.id;
+
+  try {
+    // Create session BEFORE spawn so event handlers can find it immediately
+    const session: Session = {
+      taskId: sessionId,
+      sessionId,
+      status: "running",
+      startedAt: new Date(),
+      chatId,
+      label,
+    };
+    setSession(sessionId, session);
+
+    const agent = spawnAgent({
+      cwd: body.cwd,
+      sessionId,
+      onEvent: (event: RpcEvent) => handleAgentEvent(agent, event),
+      onExit: (code, signal) => handleAgentExit(sessionId, code, signal),
+      onError: (err) => {
+        console.error(`[spawn:${sessionId}] Agent error:`, err);
+      },
+    });
+
+    sendPrompt(agent, body.prompt);
+
+    json(res, 201, { sessionId });
+  } catch (error) {
+    // Clean up session if spawn failed
+    deleteSession(sessionId);
     const message = error instanceof Error ? error.message : String(error);
     json(res, 500, { error: message });
   }
@@ -1320,6 +1388,12 @@ export async function routeApi(
   const stopMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/stop$/);
   if (stopMatch && method === "POST") {
     await handleStopSession(req, res, decodeURIComponent(stopMatch[1]));
+    return true;
+  }
+
+  // POST /api/sessions/spawn
+  if (pathname === "/api/sessions/spawn" && method === "POST") {
+    await handleSpawnSession(req, res, authedUser);
     return true;
   }
 
