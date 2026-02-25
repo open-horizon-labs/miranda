@@ -146,7 +146,7 @@
 
 	.issue-title {
 		font-size: var(--text-sm);
-		font-family: var(--font-display);
+		font-family: var(--font-data);
 		color: var(--ground-5);
 		overflow: hidden;
 		text-overflow: ellipsis;

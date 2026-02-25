@@ -58,7 +58,7 @@
 
 	.app-name {
 		font-family: var(--font-display);
-		font-size: var(--text-lg);
+		font-size: var(--text-xl);
 		color: var(--ground-5);
 		display: flex;
 		align-items: center;
