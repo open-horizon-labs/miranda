@@ -30,6 +30,16 @@ import { subscribe, unsubscribe } from "./logs.js";
 import { getSchedulerStatus, enableProject, disableProject, triggerProject, queueChain, dequeueChain } from "../scheduler/watcher.js";
 import { spawnAgent, sendPrompt, type RpcEvent } from "../agent/process.js";
 import { handleAgentEvent, handleAgentExit } from "../agent/events.js";
+import {
+  getLastSnapshot,
+  addSubscriber,
+  removeSubscriber,
+  setOvermindState,
+  onOvermindUpdate,
+  getOvermindState,
+  setAutomationConfig,
+} from "../portfolio/index.js";
+import type { AttentionItem, DefaultAction, OvermindState, AppAutomationConfig } from "../portfolio/types.js";
 
 /** Shutdown function for /api/restart. Set by setApiShutdownFn(). */
 let shutdownFn: (() => Promise<void>) | null = null;
@@ -1307,6 +1317,112 @@ function handleSessionLogs(
 }
 
 /**
+ * GET /api/portfolio/stream — SSE stream of full portfolio snapshots.
+ * Auth via query param: ?initData=... (EventSource can't set headers).
+ */
+function handlePortfolioStream(req: IncomingMessage, res: ServerResponse): void {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const initData = url.searchParams.get("initData") ?? "";
+  if (!initData) {
+    json(res, 401, { error: "Missing initData query parameter" });
+    return;
+  }
+  const user = validateInitData(initData);
+  if (!user) {
+    json(res, 401, { error: "Invalid or expired authentication" });
+    return;
+  }
+
+  // Set up SSE response
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    ...CORS_HEADERS,
+  });
+
+  // Subscribe (sends current snapshot immediately if available)
+  addSubscriber(res, getLastSnapshot());
+
+  // Unsubscribe on disconnect
+  req.on("close", () => {
+    removeSubscriber(res);
+  });
+}
+
+/**
+ * POST /api/portfolio/overmind — receives judgment payloads from the Overmind daemon.
+ * Authentication: localhost-only (daemon runs on same machine).
+ * Accepts partial state updates and merges into the overmind field of PortfolioState.
+ */
+async function handleOvermindWriteback(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // Localhost-only auth: check remote address
+  const remoteAddr = req.socket.remoteAddress ?? "";
+  const isLocalhost = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
+  if (!isLocalhost) {
+    json(res, 403, { error: "Overmind endpoint is localhost-only" });
+    return;
+  }
+
+  const body = await parseJsonBody<{
+    attentionItems?: AttentionItem[];
+    reasoning?: string;
+    defaultActions?: DefaultAction[];
+    automationConfig?: Record<string, Partial<AppAutomationConfig>>;
+  }>(req);
+
+  if (!body) {
+    json(res, 400, { error: "Invalid JSON body" });
+    return;
+  }
+
+  // Merge into overmind state
+  const current = getOvermindState();
+  const updated: OvermindState = {
+    attentionItems: body.attentionItems ?? current.attentionItems,
+    reasoning: body.reasoning ?? current.reasoning,
+    processedAt: new Date().toISOString(),
+    cycleCount: current.cycleCount + 1,
+    defaultActions: body.defaultActions ?? current.defaultActions,
+  };
+  setOvermindState(updated);
+
+  // Apply per-app automation config if provided
+  if (body.automationConfig) {
+    for (const [appName, cfg] of Object.entries(body.automationConfig)) {
+      setAutomationConfig(appName, cfg);
+    }
+  }
+
+  // Trigger immediate SSE publish
+  onOvermindUpdate();
+
+  json(res, 200, { ok: true, cycleCount: updated.cycleCount });
+}
+
+/**
+ * GET /api/portfolio/snapshot — one-shot snapshot for the Overmind daemon.
+ * Authentication: localhost-only (same as writeback).
+ * Returns the last computed PortfolioState, or 503 if not yet available.
+ */
+function handlePortfolioSnapshot(req: IncomingMessage, res: ServerResponse): void {
+  const remoteAddr = req.socket.remoteAddress ?? "";
+  const isLocalhost = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
+  if (!isLocalhost) {
+    json(res, 403, { error: "Snapshot endpoint is localhost-only" });
+    return;
+  }
+
+  const snapshot = getLastSnapshot();
+  if (!snapshot) {
+    json(res, 503, { error: "Portfolio state not yet computed" });
+    return;
+  }
+
+  json(res, 200, snapshot);
+}
+
+/**
  * Route an API request to the appropriate handler.
  * Returns true if a route matched, false otherwise.
  */
@@ -1331,6 +1447,24 @@ export async function routeApi(
   const logsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/logs$/);
   if (logsMatch && method === "GET") {
     handleSessionLogs(req, res, decodeURIComponent(logsMatch[1]));
+    return true;
+  }
+
+  // SSE portfolio stream — uses query param auth (EventSource can't set headers)
+  if (pathname === "/api/portfolio/stream" && method === "GET") {
+    handlePortfolioStream(req, res);
+    return true;
+  }
+
+  // Overmind write-back — localhost-only, no Telegram auth required
+  // Overmind snapshot read — localhost-only, no Telegram auth required
+  if (pathname === "/api/portfolio/snapshot" && method === "GET") {
+    handlePortfolioSnapshot(req, res);
+    return true;
+  }
+
+  if (pathname === "/api/portfolio/overmind" && method === "POST") {
+    await handleOvermindWriteback(req, res);
     return true;
   }
 

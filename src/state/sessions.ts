@@ -6,6 +6,14 @@ import type { Session } from "../types.js";
 // AIDEV-NOTE: In-memory for MVP. Phase 4 moves to SQLite for persistence.
 const sessions = new Map<string, Session>();
 
+/** Optional lifecycle callback, set by portfolio module during init. */
+let onLifecycleChange: (() => void) | null = null;
+
+/** Register a callback to be invoked on session create/delete. */
+export function setSessionLifecycleHook(hook: (() => void) | null): void {
+  onLifecycleChange = hook;
+}
+
 // File path for restart chat ID persistence (survives process restart)
 const RESTART_CHAT_ID_FILE = join(tmpdir(), "miranda-restart-chat-id");
 
@@ -14,11 +22,15 @@ export function getSession(taskId: string): Session | undefined {
 }
 
 export function setSession(taskId: string, session: Session): void {
+  const isNew = !sessions.has(taskId);
   sessions.set(taskId, session);
+  if (isNew && onLifecycleChange) onLifecycleChange();
 }
 
 export function deleteSession(taskId: string): boolean {
-  return sessions.delete(taskId);
+  const deleted = sessions.delete(taskId);
+  if (deleted && onLifecycleChange) onLifecycleChange();
+  return deleted;
 }
 
 export function getAllSessions(): Session[] {

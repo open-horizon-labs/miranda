@@ -21,6 +21,7 @@ import { setApiShutdownFn } from "./api/routes.js";
 import { startScheduler, stopScheduler, setNotifier } from "./scheduler/watcher.js";
 import { getRepoInfo, getOpenIssues } from "./api/github.js";
 import { scanProjects, pullProject } from "./projects/scanner.js";
+import { initPortfolio, stopPortfolio } from "./portfolio/index.js";
 
 // Validate configuration
 validateConfig();
@@ -52,6 +53,7 @@ export async function gracefulShutdown(): Promise<void> {
     console.log("   Bot stopped");
     await stopApiServer();
     stopScheduler();
+    stopPortfolio();
 
     // Kill all agent processes
     const agents = getAllAgents();
@@ -403,6 +405,11 @@ bot.start({
 
     // Start dependency scheduler
     startScheduler();
+
+    // Initialize portfolio state module
+    initPortfolio().catch((err) => {
+      console.error("Portfolio init failed:", err);
+    });
   },
 }).catch((err) => {
   console.error("Failed to start:", err);
