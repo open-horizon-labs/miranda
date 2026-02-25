@@ -24,21 +24,44 @@
 	</header>
 
 	<main class="app-regions">
-		{#each portfolio.apps as app (app.name)}
-			<AppRegion {app} />
-		{/each}
-		{#if portfolio.error}
-			<div class="error-banner">{portfolio.error}</div>
-		{/if}
-		{#if portfolio.apps.length === 0 && !portfolio.loading && !portfolio.error}
-			<div class="empty-state">
-				<span class="font-display">No projects</span>
+		{#if portfolio.loading}
+			<div class="skeleton" role="status" aria-label="Loading portfolio">
+				{#each Array(3) as _}
+					<div class="skel-app">
+						<div class="skel-block skel-name"></div>
+						<div class="skel-phases">
+							<div class="skel-block skel-phase"></div>
+							<div class="skel-block skel-phase"></div>
+							<div class="skel-block skel-phase"></div>
+							<div class="skel-block skel-phase"></div>
+						</div>
+					</div>
+				{/each}
 			</div>
+		{:else}
+			{#each portfolio.apps as app (app.name)}
+				<AppRegion {app} />
+			{/each}
+			{#if portfolio.error}
+				<div class="error-banner">{portfolio.error}</div>
+			{/if}
+			{#if portfolio.apps.length === 0 && !portfolio.error}
+				<div class="empty-state">
+					<span class="font-display">No projects</span>
+				</div>
+			{/if}
 		{/if}
 	</main>
 
 	<footer class="attention-strip-container">
-		<AttentionStrip items={portfolio.attention} />
+		{#if portfolio.loading}
+			<div class="skel-attention" aria-hidden="true">
+				<div class="skel-block skel-attention-item"></div>
+				<div class="skel-block skel-attention-item"></div>
+			</div>
+		{:else}
+			<AttentionStrip items={portfolio.attention} />
+		{/if}
 	</footer>
 </div>
 
@@ -86,5 +109,94 @@
 		height: 100%;
 		color: var(--ground-3);
 		font-size: var(--text-lg);
+	}
+
+	/* ═══════════ Loading Skeleton ═══════════ */
+
+	.skel-block {
+		position: relative;
+		overflow: hidden;
+		background: var(--ground-2);
+		border-radius: 4px;
+	}
+
+	.skel-block::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			90deg,
+			transparent 0%,
+			color-mix(in oklch, var(--ground-1) 60%, transparent) 50%,
+			transparent 100%
+		);
+		transform: translateX(-100%);
+		animation: shimmer 1.5s var(--ease-out-quart) infinite;
+	}
+
+	@keyframes shimmer {
+		to {
+			transform: translateX(100%);
+		}
+	}
+
+	.skel-app {
+		display: grid;
+		grid-template-columns: minmax(8rem, auto) 1fr;
+		gap: 1rem;
+		padding: 1rem 0;
+		border-bottom: 1px solid var(--ground-2);
+	}
+
+	.skel-name {
+		width: 7rem;
+		height: 1.25rem;
+		align-self: center;
+	}
+
+	.skel-phases {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.skel-phase {
+		flex: 1;
+		height: 3.5rem;
+	}
+
+	.skel-attention {
+		padding: 0.5rem 1.5rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.skel-attention-item {
+		height: 1.25rem;
+	}
+
+	.skel-attention-item:first-child {
+		width: 55%;
+	}
+
+	.skel-attention-item:last-child {
+		width: 35%;
+	}
+
+	@container (max-width: 768px) {
+		.skel-app {
+			grid-template-columns: 1fr;
+		}
+
+		.skel-phases {
+			flex-direction: column;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.skel-block::after {
+			animation: none;
+			display: none;
+		}
 	}
 </style>

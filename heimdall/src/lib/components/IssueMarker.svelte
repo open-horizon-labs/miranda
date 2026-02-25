@@ -77,7 +77,8 @@
 	});
 </script>
 
-<span class="issue-marker" class:peripheral={detail === 'peripheral'} class:ambient={detail === 'ambient'} class:focused={detail === 'focused'}>
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<span class="issue-marker" class:peripheral={detail === 'peripheral'} class:ambient={detail === 'ambient'} class:focused={detail === 'focused'} role="listitem" tabindex={detail === 'peripheral' ? undefined : 0}>
 	<svg
 		class="marker-svg {heartbeatClass}"
 		class:rotate-slow={isRotating}
@@ -222,5 +223,11 @@
 
 	.rotate-slow {
 		animation: rotate-slow 4s linear infinite;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.rotate-slow {
+			animation: none;
+		}
 	}
 </style>
