@@ -51,13 +51,13 @@
 	let isRotating = $derived(markerState === 'rotating');
 
 	let markerSize = $derived(({
-		'hollow-dim': 10,
-		'hollow-warm': 12,
-		'filled-pulsing': 14,
-		'filled-frozen': 14,
-		'filled-accent': 14,
-		'rotating': 12,
-		'check-fading': 10,
+		'hollow-dim': 15,
+		'hollow-warm': 18,
+		'filled-pulsing': 21,
+		'filled-frozen': 21,
+		'filled-accent': 21,
+		'rotating': 18,
+		'check-fading': 15,
 	} satisfies Record<MarkerState, number>)[markerState]);
 
 	let truncatedTitle = $derived(
@@ -145,6 +145,24 @@
 
 	.marker-svg {
 		flex-shrink: 0;
+		transition: filter var(--duration-status) var(--ease-out-expo);
+	}
+
+	.marker-svg:global(.heartbeat-working),
+	.marker-svg:global(.heartbeat-starting) {
+		filter: drop-shadow(0 0 4px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-thinking) {
+		filter: drop-shadow(0 0 3px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-asking) {
+		filter: drop-shadow(0 0 6px var(--pulse-active)) drop-shadow(0 0 10px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-error) {
+		filter: drop-shadow(0 0 4px var(--attention));
 	}
 
 	.issue-number {
@@ -156,7 +174,7 @@
 
 	.issue-title {
 		font-size: var(--text-sm);
-		font-family: var(--font-display);
+		font-family: var(--font-data);
 		color: var(--ground-5);
 		overflow: hidden;
 		text-overflow: ellipsis;
