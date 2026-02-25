@@ -31,6 +31,7 @@
 <section
 	class="phase-column phase-{phase}"
 	style:flex-grow={grow}
+	aria-label={PHASE_LABELS[phase]}
 >
 	<header class="phase-label small-caps">{PHASE_LABELS[phase]}</header>
 	<div class="issue-list">

@@ -15,19 +15,19 @@
 	};
 </script>
 
-{#if items.length > 0}
-	<div class="attention-strip">
+<div class="attention-strip" aria-live="polite" role="log" aria-relevant="additions removals">
+	{#if items.length > 0}
 		{#each items as item (item.id)}
-			<div class="attention-item">
+			<div class="attention-item" aria-label="{item.project} #{item.issueNumber}: {item.title} — {actionLabels[item.reason]}">
 				<span class="reason-icon reason-{item.reason}">
 					{#if item.reason === 'asking'}
-						<svg viewBox="0 0 14 14" class="icon heartbeat-asking"><circle cx="7" cy="7" r="5" fill="currentColor"/></svg>
+						<svg viewBox="0 0 14 14" class="icon heartbeat-asking" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="currentColor"/></svg>
 					{:else if item.reason === 'ci-failed'}
-						<svg viewBox="0 0 14 14" class="icon"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+						<svg viewBox="0 0 14 14" class="icon" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none"/></svg>
 					{:else if item.reason === 'conflicts'}
-						<svg viewBox="0 0 14 14" class="icon"><path d="M7 1l6 12H1z" stroke="currentColor" stroke-width="1.5" fill="none"/><text x="7" y="11" text-anchor="middle" font-size="8" fill="currentColor">!</text></svg>
+						<svg viewBox="0 0 14 14" class="icon" aria-hidden="true"><path d="M7 1l6 12H1z" stroke="currentColor" stroke-width="1.5" fill="none"/><text x="7" y="11" text-anchor="middle" font-size="8" fill="currentColor">!</text></svg>
 					{:else if item.reason === 'review-needed'}
-						<svg viewBox="0 0 14 14" class="icon"><ellipse cx="7" cy="7" rx="6" ry="4" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/></svg>
+						<svg viewBox="0 0 14 14" class="icon" aria-hidden="true"><ellipse cx="7" cy="7" rx="6" ry="4" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/></svg>
 					{/if}
 				</span>
 
@@ -44,8 +44,8 @@
 				</span>
 			</div>
 		{/each}
-	</div>
-{/if}
+	{/if}
+</div>
 
 <style>
 	.attention-strip {
