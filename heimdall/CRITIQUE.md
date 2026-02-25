@@ -124,7 +124,7 @@ The Factorio belt effect comes from three things: (1) visible physical movement 
 
 - Spatial flow (F4): Issues physically drifting between columns would create the "watching the factory" feeling.
 - Larger markers (F5): Heartbeats visible from across a room would make this an ambient display you glance at, not a tab you switch to.
-- Completion accumulation: A visible representation of work throughput — today's done count, or a done column that has visual mass proportional to completed work.
+- Completion accumulation (F11): A visible representation of work throughput — today's done count, or a done column that has visual mass proportional to completed work.
 - Temperature that's actually visible (F7): If entering a room and glancing at the surface, you should be able to tell at a distance "that project is hot" from the region color alone.
 
 ---
@@ -167,10 +167,11 @@ The Factorio belt effect comes from three things: (1) visible physical movement 
 | F8 | Temperature | Attention items: only icon is accent-colored, text blends in | Minor | #154 |
 | F9 | Typography | Type scale underutilized — xl/2xl never used, hierarchy compressed | Minor | #154 |
 | F10 | Typography | Fraunces at text-sm loses its display character | Minor | #154 |
+| F11 | Emotion | No completion accumulation — done work fades rather than building satisfaction | Minor | #156 |
 
 ### Dimensions without issues
 
-- **Emotional response:** No new structural issues — the game-loop pull deficit is a consequence of F4, F5, and F7. Fix the spatial flow, marker size, and temperature visibility, and the pull improves.
+- **Emotional response:** The game-loop pull deficit is primarily a consequence of F4, F5, and F7. F11 (completion accumulation) is the one structural finding specific to this dimension. Fix the spatial flow, marker size, temperature visibility, and add completion accumulation, and the pull improves.
 - **AI slop test:** Passes. No fix needed.
 
 ### Overall Assessment
