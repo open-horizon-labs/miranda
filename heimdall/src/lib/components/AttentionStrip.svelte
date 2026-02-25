@@ -37,9 +37,9 @@
 
 				<span class="item-action">
 					{#if item.reason === 'review-needed' && item.prUrl}
-						<a class="action-btn" href={item.prUrl} target="_blank" rel="noopener noreferrer">{actionLabels[item.reason]}</a>
+						<a class="action-btn action-{item.reason}" href={item.prUrl} target="_blank" rel="noopener noreferrer">{actionLabels[item.reason]}</a>
 					{:else}
-						<button class="action-btn" type="button" disabled>{actionLabels[item.reason]}</button>
+						<button class="action-btn action-{item.reason}" type="button" disabled>{actionLabels[item.reason]}</button>
 					{/if}
 				</span>
 			</div>
@@ -61,10 +61,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding: 0.25rem 0.5rem;
+		padding: 0.375rem 0.5rem;
 		border-radius: 4px;
 		background: color-mix(in oklch, var(--attention) 6%, transparent);
-		font-size: var(--text-sm);
+		font-size: var(--text-base);
 		transition: background var(--duration-attention) var(--ease-out-expo);
 		animation: slide-in-right var(--duration-appear) var(--ease-out-quart) both;
 	}
@@ -87,8 +87,8 @@
 	}
 
 	.reason-icon :global(.icon) {
-		width: 14px;
-		height: 14px;
+		width: 18px;
+		height: 18px;
 	}
 
 	.reason-asking {
@@ -109,7 +109,7 @@
 
 	.item-ref {
 		flex-shrink: 0;
-		font-size: var(--text-xs);
+		font-size: var(--text-sm);
 		color: color-mix(in oklch, var(--attention) 40%, var(--ground-4));
 	}
 
@@ -120,6 +120,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		color: color-mix(in oklch, var(--attention) 25%, var(--ground-5));
+		font-weight: 600;
 	}
 
 	.item-action {
@@ -131,18 +132,31 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		font-size: var(--text-xs);
+		font-size: var(--text-sm);
+		font-weight: 600;
 		font-family: inherit;
 		background: var(--ground-2);
 		color: var(--ground-5);
 		border: none;
-		border-radius: 4px;
-		padding: 0.25rem 0.5rem;
-		min-height: 24px;
-		min-width: 24px;
+		border-radius: 6px;
+		padding: 0.375rem 0.75rem;
+		min-height: 28px;
+		min-width: 28px;
 		cursor: pointer;
 		text-decoration: none;
 		transition: background var(--duration-status) var(--ease-out-expo);
+	}
+
+	.action-btn.action-asking,
+	.action-btn.action-ci-failed,
+	.action-btn.action-conflicts {
+		background: var(--attention);
+		color: var(--ground-0);
+	}
+
+	.action-btn.action-review-needed {
+		background: var(--review);
+		color: var(--ground-0);
 	}
 
 	.action-btn::after {
@@ -155,8 +169,18 @@
 		background: var(--ground-3);
 	}
 
+	.action-btn.action-asking:hover,
+	.action-btn.action-ci-failed:hover,
+	.action-btn.action-conflicts:hover {
+		background: color-mix(in oklch, var(--attention), var(--ground-5) 15%);
+	}
+
+	.action-btn.action-review-needed:hover {
+		background: color-mix(in oklch, var(--review), var(--ground-5) 15%);
+	}
+
 	.action-btn:disabled {
-		opacity: 0.5;
+		opacity: 0.7;
 		cursor: not-allowed;
 	}
 
