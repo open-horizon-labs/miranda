@@ -50,6 +50,16 @@
 	let isCheck = $derived(markerState === 'check-fading');
 	let isRotating = $derived(markerState === 'rotating');
 
+	let markerSize = $derived(({
+		'hollow-dim': 15,
+		'hollow-warm': 18,
+		'filled-pulsing': 21,
+		'filled-frozen': 21,
+		'filled-accent': 21,
+		'rotating': 18,
+		'check-fading': 15,
+	} satisfies Record<MarkerState, number>)[markerState]);
+
 	let truncatedTitle = $derived(
 		issue.title.length > 30 ? issue.title.slice(0, 29) + '\u2026' : issue.title
 	);
@@ -82,8 +92,8 @@
 	<svg
 		class="marker-svg {heartbeatClass}"
 		class:rotate-slow={isRotating}
-		width="12"
-		height="12"
+		width={markerSize}
+		height={markerSize}
 		viewBox="0 0 12 12"
 		aria-hidden="true"
 	>
@@ -135,6 +145,24 @@
 
 	.marker-svg {
 		flex-shrink: 0;
+		transition: filter var(--duration-status) var(--ease-out-expo);
+	}
+
+	.marker-svg:global(.heartbeat-working),
+	.marker-svg:global(.heartbeat-starting) {
+		filter: drop-shadow(0 0 4px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-thinking) {
+		filter: drop-shadow(0 0 3px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-asking) {
+		filter: drop-shadow(0 0 6px var(--pulse-active)) drop-shadow(0 0 10px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-error) {
+		filter: drop-shadow(0 0 4px var(--attention));
 	}
 
 	.issue-number {
@@ -146,7 +174,7 @@
 
 	.issue-title {
 		font-size: var(--text-sm);
-		font-family: var(--font-display);
+		font-family: var(--font-data);
 		color: var(--ground-5);
 		overflow: hidden;
 		text-overflow: ellipsis;
