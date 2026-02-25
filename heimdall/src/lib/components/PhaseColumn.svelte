@@ -115,6 +115,8 @@
 	}
 
 	.phase-done {
+		opacity: 0.45;
+		filter: saturate(0.3);
 		background: color-mix(in oklch, var(--done) 4%, transparent);
 		border-radius: 4px;
 	}
