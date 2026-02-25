@@ -12,7 +12,7 @@
 import { config } from "../config.js";
 import { getRepoInfo, getOpenIssues, getOpenPRs, findLinkedPR, getPREnrichment, type GitHubPR } from "../api/github.js";
 import { parseDependencies } from "../api/deps.js";
-import { buildDependencyGraph, findStackUnblockedIssues, detectCycles, filterByFactoryPhase, type DependencyGraph, type FactoryPhaseRejection } from "./graph.js";
+import { buildDependencyGraph, findStackUnblockedIssues, detectCycles, type DependencyGraph } from "./graph.js";
 import { scanProjects } from "../projects/scanner.js";
 import { spawnSession } from "../bot/commands.js";
 import { getSession, setSession, getAllSessions } from "../state/sessions.js";
@@ -77,6 +77,7 @@ export function startScheduler(): void {
 
   const interval = config.schedulerPollInterval;
   console.log(`   Scheduler: polling every ${interval / 1000}s, max ${config.schedulerMaxConcurrent} concurrent`);
+  console.log("   Scheduler: phase ordering governed by dependency graph (dependsOn/blockedBy)");
 
   // Run first poll after a short delay (let bot finish starting)
   setTimeout(() => {
@@ -202,7 +203,6 @@ interface SchedulerDebug {
   stackReadyIssues: number[];
   stackUnblocked: Array<{ issue: number; baseDep: number }>;
   queued: number[];
-  factoryPhaseBlocked: FactoryPhaseRejection[];
   filteredUnblocked: Array<{ issue: number; baseDep: number }>;
   skippedHasPR: Array<{ issue: number; pr: number }>;
 }
@@ -313,13 +313,11 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
   );
   const allStackUnblocked = findStackUnblockedIssues(graph, openIssueNumbers, resolvedIssueNumbers, stackReadyIssues);
 
-  // Apply factory phase ordering, but allow earlier-phase issues that are already stack-ready
-  const issuesWithLabels = openIssues.map((issue) => ({ number: issue.number, labels: issue.labels }));
-  const { passed: phaseFiltered, rejected: factoryPhaseBlocked } = filterByFactoryPhase(allStackUnblocked, issuesWithLabels, openIssueNumbers, stackReadyIssues);
+  // Phase ordering is handled by the dependency graph (dependsOn/blockedBy) — no separate phase gate needed.
 
   // Filter to only issues explicitly queued
   const queued = state.scheduledChains;
-  const stackUnblocked = phaseFiltered.filter((s) => queued.has(s.issueNumber));
+  const stackUnblocked = allStackUnblocked.filter((s) => queued.has(s.issueNumber));
 
   // Attach debug info
   result.debug = {
@@ -330,7 +328,6 @@ async function pollProject(projectName: string, manual = false): Promise<PollRes
     stackUnblocked: allStackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
     queued: [...queued],
     filteredUnblocked: stackUnblocked.map((s) => ({ issue: s.issueNumber, baseDep: s.baseDep })),
-    factoryPhaseBlocked,
     skippedHasPR: [],
   };
 
@@ -417,7 +414,7 @@ async function trySpawnIssue(
   if (existing) return "already_running";
 
   try {
-    const sessionId = await spawnSession("oh-task", String(issueNumber), chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-task", String(issueNumber), chatId, {
       projectPath,
       projectName,
       baseBranch,
@@ -430,6 +427,8 @@ async function trySpawnIssue(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
     return "started";

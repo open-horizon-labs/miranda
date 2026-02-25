@@ -510,7 +510,7 @@ async function handleStartIssue(
     if (baseBranch) {
       spawnOptions.baseBranch = baseBranch;
     }
-    const sessionId = await spawnSession("oh-task", issueNumber, chatId, spawnOptions);
+    const { sessionId, worktreePath } = await spawnSession("oh-task", issueNumber, chatId, spawnOptions);
 
     const session: Session = {
       taskId: sessionKey,
@@ -519,6 +519,8 @@ async function handleStartIssue(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -586,7 +588,7 @@ async function handleStartJoin(
       return;
     }
 
-    const sessionId = await spawnSession("oh-join", issueNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-join", issueNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -598,6 +600,8 @@ async function handleStartJoin(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -690,7 +694,7 @@ async function handleStartNotes(
   }
 
   try {
-    const sessionId = await spawnSession("oh-notes", prNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-notes", prNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -702,6 +706,8 @@ async function handleStartNotes(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -750,7 +756,7 @@ async function handleStartCI(
   }
 
   try {
-    const sessionId = await spawnSession("oh-ci", prNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-ci", prNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -762,6 +768,8 @@ async function handleStartCI(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -810,7 +818,7 @@ async function handleStartConflict(
   }
 
   try {
-    const sessionId = await spawnSession("oh-conflict", prNumber, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-conflict", prNumber, chatId, {
       projectPath,
       projectName,
     });
@@ -822,6 +830,8 @@ async function handleStartConflict(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -870,7 +880,7 @@ async function handleStartPlan(
   const sessionKey = `oh-plan-${projectName}-${timestamp}`;
 
   try {
-    const sessionId = await spawnSession("oh-plan", description, chatId, {
+    const { sessionId, worktreePath } = await spawnSession("oh-plan", description, chatId, {
       projectPath,
       projectName,
     });
@@ -882,6 +892,8 @@ async function handleStartPlan(
       status: "running",
       startedAt: new Date(),
       chatId,
+      worktreePath,
+      projectPath,
     };
     setSession(sessionKey, session);
 
@@ -960,7 +972,6 @@ async function handleUpdateBranch(
   try {
     const { owner, repo } = await getRepoInfo(projectPath);
     const result = await updatePRBranch(owner, repo, num);
-    invalidateListingCache(owner, repo, { prs: true });
     json(res, 200, result);
   } catch (error) {
     if (error instanceof GitHubRateLimitError) {
@@ -1327,6 +1338,27 @@ export async function routeApi(
   // All /api/* routes require Telegram initData authentication
   const authedUser = requireAuth(req, res);
   if (!authedUser) return true;
+
+  // Centralized cache invalidation: any POST to an issue, PR, or plan route
+  // busts all caches for that repo after the response is sent.
+  if (method === "POST") {
+    const projectMutationMatch = pathname.match(
+      /^\/api\/projects\/([^/]+)\/(?:issues\/\d+|prs\/\d+|plan)\b/
+    );
+    if (projectMutationMatch) {
+      const mutProject = decodeURIComponent(projectMutationMatch[1]);
+      res.on("finish", () => {
+        if (res.statusCode && res.statusCode < 400) {
+          resolveProject(mutProject)
+            .then((path) => (path ? getRepoInfo(path) : null))
+            .then((info) => {
+              if (info) invalidateListingCache(info.owner, info.repo);
+            })
+            .catch(() => {});
+        }
+      });
+    }
+  }
 
   // --- Existing routes ---
 

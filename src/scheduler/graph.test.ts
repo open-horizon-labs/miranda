@@ -4,10 +4,6 @@ import {
 	buildDependencyGraph,
 	findUnblockedIssues,
 	findStackUnblockedIssues,
-	parseFactoryLabel,
-	getIssueFactoryPhase,
-	filterByFactoryPhase,
-	type StackUnblocked,
 } from "./graph.js";
 
 // ---------------------------------------------------------------------------
@@ -196,186 +192,44 @@ describe("findStackUnblockedIssues", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseFactoryLabel
+// Regression: phase-labeled issues are NOT spuriously blocked
 // ---------------------------------------------------------------------------
 
-describe("parseFactoryLabel", () => {
-	it("parses valid factory label", () => {
-		const result = parseFactoryLabel("factory:dm:audit");
-		assert.deepStrictEqual(result, { app: "dm", phase: "audit", phaseIndex: 1 });
+describe("no factory phase gating (regression)", () => {
+	it("audit issue is stack-unblocked when its dep is stack-ready, regardless of unrelated build issues", () => {
+		// #1178 (audit) depends on #1170 (build, stack-ready).
+		// #1236 (build, no PR) is an unrelated open build issue.
+		// Previously the phase gate would block #1178 because of #1236.
+		// Now only the dependency graph matters.
+		const graph = makeGraph([
+			{ number: 1170, dependsOn: [] },
+			{ number: 1178, dependsOn: [1170] },
+			{ number: 1179, dependsOn: [1178] },
+			{ number: 1236, dependsOn: [] },
+		]);
+		const open = new Set([1170, 1178, 1179, 1236]);
+		const resolved = new Set<number>();
+		const stackReady = new Set([1170]);
+
+		const result = findStackUnblockedIssues(graph, open, resolved, stackReady);
+		// #1178 should be eligible to stack on #1170, unblocked by #1236
+		assert.deepStrictEqual(result, [{ issueNumber: 1178, baseDep: 1170 }]);
 	});
 
-	it("returns null for non-factory label", () => {
-		assert.strictEqual(parseFactoryLabel("oh-planned"), null);
-		assert.strictEqual(parseFactoryLabel("bug"), null);
-	});
+	it("critique issue is stack-unblocked when its dep is stack-ready, regardless of other open audit issues", () => {
+		// #1179 (critique) depends on #1178 (audit, stack-ready).
+		// #1180 (audit, open, not ready) is an unrelated audit issue.
+		// Dependency graph alone governs scheduling.
+		const graph = makeGraph([
+			{ number: 1178, dependsOn: [] },
+			{ number: 1179, dependsOn: [1178] },
+			{ number: 1180, dependsOn: [] },
+		]);
+		const open = new Set([1178, 1179, 1180]);
+		const resolved = new Set<number>();
+		const stackReady = new Set([1178]);
 
-	it("returns null for unknown phase", () => {
-		assert.strictEqual(parseFactoryLabel("factory:dm:deploy"), null);
-	});
-
-	it("returns null for malformed label", () => {
-		assert.strictEqual(parseFactoryLabel("factory:dm"), null);
-		assert.strictEqual(parseFactoryLabel("factory"), null);
-		assert.strictEqual(parseFactoryLabel("factory:dm:audit:extra"), null);
-	});
-
-	it("parses all valid phases with correct order", () => {
-		assert.strictEqual(parseFactoryLabel("factory:dm:build")!.phaseIndex, 0);
-		assert.strictEqual(parseFactoryLabel("factory:dm:audit")!.phaseIndex, 1);
-		assert.strictEqual(parseFactoryLabel("factory:dm:critique")!.phaseIndex, 2);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// getIssueFactoryPhase
-// ---------------------------------------------------------------------------
-
-describe("getIssueFactoryPhase", () => {
-	it("finds factory label among other labels", () => {
-		const result = getIssueFactoryPhase(["oh-planned", "factory:dm:audit", "bug"]);
-		assert.deepStrictEqual(result, { app: "dm", phase: "audit", phaseIndex: 1 });
-	});
-
-	it("returns null when no factory label present", () => {
-		assert.strictEqual(getIssueFactoryPhase(["oh-planned", "bug"]), null);
-		assert.strictEqual(getIssueFactoryPhase([]), null);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// filterByFactoryPhase
-// ---------------------------------------------------------------------------
-
-describe("filterByFactoryPhase", () => {
-	it("blocks critique when audit-phase issues are still open", () => {
-		// Audit (#20) and fix-A (#21) are audit-phase. Critique (#22) is critique-phase.
-		// fix-A is still open → critique is blocked.
-		const candidates: StackUnblocked[] = [
-			{ issueNumber: 21, baseDep: 20 },  // fix-A can stack
-			{ issueNumber: 22, baseDep: 20 },  // critique should be blocked
-		];
-		const allIssues = [
-			{ number: 20, labels: ["factory:dm:audit"] },
-			{ number: 21, labels: ["factory:dm:audit"] },  // fix-A
-			{ number: 22, labels: ["factory:dm:critique"] },  // critique
-		];
-		const open = new Set([20, 21, 22]);
-
-		const { passed, rejected } = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(passed, [{ issueNumber: 21, baseDep: 20 }]);
-		assert.strictEqual(rejected.length, 1);
-		assert.strictEqual(rejected[0].issue, 22);
-		assert.strictEqual(rejected[0].blockedByPhase, "audit");
-		assert.deepStrictEqual(rejected[0].blockerIssues, [20, 21]);
-	});
-
-	it("unblocks critique when all audit-phase issues are closed", () => {
-		// All audit-phase issues closed (not in open set). Critique can proceed.
-		const candidates: StackUnblocked[] = [
-			{ issueNumber: 22, baseDep: 20 },
-		];
-		const allIssues = [
-			{ number: 20, labels: ["factory:dm:audit"] },
-			{ number: 21, labels: ["factory:dm:audit"] },
-			{ number: 22, labels: ["factory:dm:critique"] },
-		];
-		const open = new Set([22]); // only critique is open
-
-		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(passed, [{ issueNumber: 22, baseDep: 20 }]);
-	});
-
-	it("passes through non-factory issues unchanged", () => {
-		const candidates: StackUnblocked[] = [
-			{ issueNumber: 50, baseDep: 49 },
-		];
-		const allIssues = [
-			{ number: 49, labels: ["oh-planned"] },
-			{ number: 50, labels: ["oh-planned"] },
-		];
-		const open = new Set([49, 50]);
-
-		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(passed, [{ issueNumber: 50, baseDep: 49 }]);
-	});
-
-	it("handles mixed factory and non-factory issues", () => {
-		const candidates: StackUnblocked[] = [
-			{ issueNumber: 21, baseDep: 20 },  // factory audit
-			{ issueNumber: 22, baseDep: 20 },  // factory critique (blocked)
-			{ issueNumber: 50, baseDep: 49 },  // non-factory (passes through)
-		];
-		const allIssues = [
-			{ number: 20, labels: ["factory:dm:audit"] },
-			{ number: 21, labels: ["factory:dm:audit"] },
-			{ number: 22, labels: ["factory:dm:critique"] },
-			{ number: 49, labels: ["oh-planned"] },
-			{ number: 50, labels: ["oh-planned"] },
-		];
-		const open = new Set([20, 21, 22, 49, 50]);
-
-		const { passed, rejected } = filterByFactoryPhase(candidates, allIssues, open);
-		const issues = passed.map((r) => r.issueNumber);
-		assert.ok(issues.includes(21), "audit fix passes");
-		assert.ok(!issues.includes(22), "critique blocked");
-		assert.ok(issues.includes(50), "non-factory passes");
-		assert.strictEqual(rejected.length, 1);
-		assert.strictEqual(rejected[0].issue, 22);
-	});
-
-	it("blocks audit when build-phase issues are still open", () => {
-		const candidates: StackUnblocked[] = [
-			{ issueNumber: 103, baseDep: 102 },  // audit
-		];
-		const allIssues = [
-			{ number: 102, labels: ["factory:dm:build"] },  // ui (still open)
-			{ number: 103, labels: ["factory:dm:audit"] },
-		];
-		const open = new Set([102, 103]);
-
-		const { passed, rejected } = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(passed, []);
-		assert.strictEqual(rejected.length, 1);
-		assert.strictEqual(rejected[0].blockedByPhase, "build");
-	});
-
-	it("full factory lifecycle: build done, audit in progress, critique waits", () => {
-		// Build phase: #100 (module), #101 (app), #102 (ui) — all closed
-		// Audit phase: #103 (audit, stack-ready), #104 (fix-A, open), #105 (fix-B, open)
-		// Critique phase: #106 (critique, open)
-		const candidates: StackUnblocked[] = [
-			{ issueNumber: 104, baseDep: 103 },  // fix-A can stack on audit
-			{ issueNumber: 106, baseDep: 103 },  // critique should be blocked
-		];
-		const allIssues = [
-			{ number: 100, labels: ["factory:dm:build"] },
-			{ number: 101, labels: ["factory:dm:build"] },
-			{ number: 102, labels: ["factory:dm:build"] },
-			{ number: 103, labels: ["factory:dm:audit"] },
-			{ number: 104, labels: ["factory:dm:audit"] },
-			{ number: 105, labels: ["factory:dm:audit"] },
-			{ number: 106, labels: ["factory:dm:critique"] },
-		];
-		const open = new Set([103, 104, 105, 106]); // build issues closed
-
-		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(passed, [{ issueNumber: 104, baseDep: 103 }]);
-	});
-
-	it("independent factory apps don't block each other", () => {
-		// dm audit still open, but cook critique should not be blocked by dm audit
-		const candidates: StackUnblocked[] = [
-			{ issueNumber: 200, baseDep: 199 },  // cook critique
-		];
-		const allIssues = [
-			{ number: 103, labels: ["factory:dm:audit"] },  // dm audit still open
-			{ number: 199, labels: ["factory:cook:audit"] },  // cook audit
-			{ number: 200, labels: ["factory:cook:critique"] },  // cook critique
-		];
-		const open = new Set([103, 200]); // dm audit open, cook audit closed
-
-		const { passed } = filterByFactoryPhase(candidates, allIssues, open);
-		assert.deepStrictEqual(passed, [{ issueNumber: 200, baseDep: 199 }]);
+		const result = findStackUnblockedIssues(graph, open, resolved, stackReady);
+		assert.deepStrictEqual(result, [{ issueNumber: 1179, baseDep: 1178 }]);
 	});
 });

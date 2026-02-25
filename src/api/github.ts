@@ -164,17 +164,23 @@ const issueListCache = new Map<string, CacheEntry<GitHubIssue[]>>();
 const prListCache = new Map<string, CacheEntry<GitHubPR[]>>();
 
 /**
- * Invalidate cached listing data for a repo after a write operation.
- * Pass which caches to clear: issues, prs, or both.
+ * Invalidate cached data for a repo after a write operation.
+ * Pass which caches to clear: issues, prs, enrichment, or any combination.
  */
 export function invalidateListingCache(
   owner: string,
   repo: string,
-  targets: { issues?: boolean; prs?: boolean } = { issues: true, prs: true }
+  targets: { issues?: boolean; prs?: boolean; enrichment?: boolean } = { issues: true, prs: true, enrichment: true }
 ): void {
   const key = `${owner}/${repo}`;
   if (targets.issues) issueListCache.delete(key);
   if (targets.prs) prListCache.delete(key);
+  if (targets.enrichment) {
+    const prefix = `${key}/`;
+    for (const k of enrichmentCache.keys()) {
+      if (k.startsWith(prefix)) enrichmentCache.delete(k);
+    }
+  }
 }
 
 /**

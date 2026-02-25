@@ -18,6 +18,10 @@ export interface Session {
   chatId: number; // Telegram chat for notifications
   /** Opaque label for session tracking (used by generic spawn, replaces skill as identifier) */
   label?: string;
+  /** Path to the git worktree directory for this session (for cleanup) */
+  worktreePath?: string;
+  /** Path to the main project directory (for worktree cleanup commands) */
+  projectPath?: string;
   pendingQuestion?: PendingQuestion;
   awaitingFreeText?: AwaitingFreeText;
   /** Pending UI request ID from agent (for extension_ui_response) */
