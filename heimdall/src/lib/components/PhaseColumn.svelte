@@ -81,6 +81,7 @@
 	}
 
 	.phase-done {
-		opacity: 0.7;
+		opacity: 0.45;
+		filter: saturate(0.3);
 	}
 </style>

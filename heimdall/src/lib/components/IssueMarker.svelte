@@ -50,6 +50,16 @@
 	let isCheck = $derived(markerState === 'check-fading');
 	let isRotating = $derived(markerState === 'rotating');
 
+	let markerSize = $derived(({
+		'hollow-dim': 10,
+		'hollow-warm': 12,
+		'filled-pulsing': 14,
+		'filled-frozen': 14,
+		'filled-accent': 14,
+		'rotating': 12,
+		'check-fading': 10,
+	} satisfies Record<MarkerState, number>)[markerState]);
+
 	let truncatedTitle = $derived(
 		issue.title.length > 30 ? issue.title.slice(0, 29) + '\u2026' : issue.title
 	);
@@ -82,8 +92,8 @@
 	<svg
 		class="marker-svg {heartbeatClass}"
 		class:rotate-slow={isRotating}
-		width="12"
-		height="12"
+		width={markerSize}
+		height={markerSize}
 		viewBox="0 0 12 12"
 		aria-hidden="true"
 	>
