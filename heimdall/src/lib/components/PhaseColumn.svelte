@@ -1,12 +1,19 @@
 <script lang="ts">
 	import type { Phase, IssueInfo, AgentInfo, PREnrichment } from '$lib/types.js';
+	import type { TransitionConfig } from 'svelte/transition';
+	import { flip } from 'svelte/animate';
+	import { expoOut } from 'svelte/easing';
 	import IssueMarker from '$lib/components/IssueMarker.svelte';
+
+	type CrossfadeTransition = (node: Element, params: { key: unknown }, intro: { direction: 'in' | 'out' | 'both' }) => () => TransitionConfig;
 
 	interface Props {
 		phase: Phase;
 		issues: IssueInfo[];
 		agents: Map<number, AgentInfo>;
 		enrichment: Record<number, PREnrichment>;
+		send: CrossfadeTransition;
+		receive: CrossfadeTransition;
 	}
 
 	const PHASE_LABELS: Record<Phase, string> = {
@@ -23,7 +30,14 @@
 		done: 0.5,
 	};
 
-	let { phase, issues, agents, enrichment }: Props = $props();
+	const prefersReducedMotion =
+		typeof window !== 'undefined'
+			? window.matchMedia('(prefers-reduced-motion: reduce)')
+			: null;
+
+	const FLIP_DURATION = (_d: number) => (prefersReducedMotion?.matches ? 0 : 800);
+
+	let { phase, issues, agents, enrichment, send, receive }: Props = $props();
 
 	let grow = $derived(PHASE_GROW[phase]);
 </script>
@@ -36,12 +50,19 @@
 	<header class="phase-label small-caps">{PHASE_LABELS[phase]}</header>
 	<div class="issue-list" role="list">
 		{#each issues as issue (issue.number)}
-			<IssueMarker
-				{issue}
-				agent={agents.get(issue.number)}
-				enrichment={issue.pr ? enrichment[issue.pr.number] : undefined}
-				detail="ambient"
-			/>
+			<div
+				class="issue-slot"
+				in:receive={{ key: issue.number }}
+				out:send={{ key: issue.number }}
+				animate:flip={{ duration: FLIP_DURATION, easing: expoOut }}
+			>
+				<IssueMarker
+					{issue}
+					agent={agents.get(issue.number)}
+					enrichment={issue.pr ? enrichment[issue.pr.number] : undefined}
+					detail="ambient"
+				/>
+			</div>
 		{/each}
 	</div>
 </section>

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { AppRegionData, Phase, AgentInfo } from '$lib/types.js';
+	import { crossfade } from 'svelte/transition';
+	import { expoOut } from 'svelte/easing';
 	import PhaseColumn from '$lib/components/PhaseColumn.svelte';
 
 	interface Props {
@@ -7,6 +9,20 @@
 	}
 
 	const PHASES: Phase[] = ['queued', 'building', 'review', 'done'];
+
+	const prefersReducedMotion =
+		typeof window !== 'undefined'
+			? window.matchMedia('(prefers-reduced-motion: reduce)')
+			: null;
+
+	const [send, receive] = crossfade({
+		duration: () => (prefersReducedMotion?.matches ? 0 : 800),
+		easing: expoOut,
+		fallback(node) {
+			const d = prefersReducedMotion?.matches ? 0 : 300;
+			return { duration: d, css: (t: number) => `opacity: ${t}` };
+		},
+	});
 
 	let { app }: Props = $props();
 
@@ -39,6 +55,8 @@
 				issues={app.phases[phase]}
 				agents={app.agents}
 				enrichment={app.enrichment}
+				{send}
+				{receive}
 			/>
 		{/each}
 	</div>
