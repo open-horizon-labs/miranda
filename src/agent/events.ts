@@ -16,6 +16,28 @@ import type {
 import type { Question } from "../types.js";
 import { emitLogEvent, closeSession as closeLogSession } from "../api/logs.js";
 
+/**
+ * Remove a git worktree for a completed/exited session.
+ * Best-effort: failures are logged but don't block cleanup.
+ */
+async function cleanupWorktree(session: { worktreePath?: string; projectPath?: string }, sessionId: string): Promise<void> {
+  if (!session.worktreePath || !session.projectPath) return;
+
+  try {
+    const { execFile } = await import("child_process");
+    const { promisify } = await import("util");
+    const execFileAsync = promisify(execFile);
+    await execFileAsync(
+      "git",
+      ["worktree", "remove", session.worktreePath, "--force"],
+      { cwd: session.projectPath }
+    );
+    console.log(`[agent:${sessionId}] Worktree removed: ${session.worktreePath}`);
+  } catch (err) {
+    console.warn(`[agent:${sessionId}] Failed to remove worktree: ${err}`);
+  }
+}
+
 // Bot reference for sending Telegram messages
 // Set during startup by calling setBot()
 let botInstance: Bot | null = null;
@@ -102,6 +124,9 @@ export function handleAgentExit(sessionId: string, code: number | null, signal: 
         });
     }
 
+    // Clean up worktree (async, best-effort)
+    cleanupWorktree(session, sessionId);
+
     // Clean up session
     deleteSession(session.taskId);
     closeLogSession(sessionId);
@@ -183,6 +208,9 @@ function handleAgentEnd(sessionId: string): void {
         console.error("Failed to send completion notification:", err);
       });
   }
+
+  // Clean up worktree (async, best-effort)
+  cleanupWorktree(session, sessionId);
 
   // Clean up session
   deleteSession(session.taskId);
