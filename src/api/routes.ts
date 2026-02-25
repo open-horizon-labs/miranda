@@ -12,6 +12,7 @@ import { parseDependencies } from "./deps.js";
 import {
   getRepoInfo,
   getOpenIssues,
+  getRecentlyClosedIssues,
   getOpenPRs,
   mergePR,
   updatePRBranch,
@@ -256,7 +257,7 @@ export async function handleStopSession(
 }
 
 /**
- * GET /api/projects/:name/issues — Open issues with parsed dependencies.
+ * GET /api/projects/:name/issues — Open issues with parsed dependencies, plus recently closed issues.
  */
 async function handleGetIssues(
   _req: IncomingMessage,
@@ -275,6 +276,7 @@ async function handleGetIssues(
       getOpenIssues(owner, repo),
       getOpenPRs(owner, repo),
     ]);
+    const closedIssues = await getRecentlyClosedIssues(owner, repo).catch(() => []);
 
     // Build set of issue numbers that have a merged PR (approximation: check closed PRs
     // that reference the issue). For open issues, we check if there's a linked open PR.
@@ -315,8 +317,16 @@ async function handleGetIssues(
       };
     });
 
+    const closedResult = closedIssues.map((issue) => ({
+      number: issue.number,
+      title: issue.title,
+      state: issue.state,
+      labels: issue.labels,
+      closedAt: issue.closedAt ?? null,
+    }));
+
     const repoUrl = `https://github.com/${owner}/${repo}`;
-    json(res, 200, { repoUrl, issues: result });
+    json(res, 200, { repoUrl, issues: result, closedIssues: closedResult });
   } catch (error) {
     if (error instanceof GitHubRateLimitError) {
       json(res, 429, { error: error.message });

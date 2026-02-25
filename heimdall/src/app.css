@@ -5,15 +5,20 @@
 	--ground-0: oklch(96% 0.01 75);
 	--ground-1: oklch(92% 0.015 75);
 	--ground-2: oklch(84% 0.02 75);
-	--ground-3: oklch(65% 0.025 75);
-	--ground-4: oklch(50% 0.02 75);
+	--ground-3: oklch(54% 0.025 75);
+	--ground-4: oklch(42% 0.02 75);
 	--ground-5: oklch(35% 0.015 75);
 
 	--pulse-active: oklch(75% 0.12 75);
 	--done: oklch(72% 0.08 145);
 	--review: oklch(68% 0.06 250);
-	--attention: oklch(62% 0.14 45);
+	--attention: oklch(52% 0.14 45);
 	--waiting: oklch(70% 0.04 250);
+
+	/* Temperature — region background tints */
+	--temperature-asking: oklch(82% 0.14 65 / 0.18);
+	--temperature-hot: oklch(75% 0.16 55 / 0.12);
+	--temperature-warm: oklch(80% 0.12 75 / 0.08);
 
 	color-scheme: light dark;
 
@@ -47,8 +52,8 @@
 		--ground-0: oklch(18% 0.02 55);
 		--ground-1: oklch(22% 0.025 55);
 		--ground-2: oklch(28% 0.02 55);
-		--ground-3: oklch(45% 0.02 55);
-		--ground-4: oklch(60% 0.015 55);
+		--ground-3: oklch(59% 0.02 55);
+		--ground-4: oklch(67% 0.015 55);
 		--ground-5: oklch(78% 0.01 55);
 
 		--pulse-active: oklch(78% 0.15 75);
@@ -56,6 +61,11 @@
 		--review: oklch(72% 0.08 250);
 		--attention: oklch(68% 0.18 45);
 		--waiting: oklch(72% 0.05 250);
+
+		/* Temperature — region background tints */
+		--temperature-asking: oklch(75% 0.12 65 / 0.22);
+		--temperature-hot: oklch(70% 0.14 55 / 0.16);
+		--temperature-warm: oklch(75% 0.10 75 / 0.10);
 	}
 }
 
@@ -83,26 +93,33 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
+/* ═══════════ Focus ═══════════ */
+
+:focus-visible {
+	outline: 2px solid var(--attention);
+	outline-offset: 2px;
+}
+
 /* ═══════════ Heartbeat Keyframes ═══════════ */
 
 @keyframes heartbeat-working {
-	0%, 100% { opacity: 0.6; transform: scale(0.95); }
-	50% { opacity: 1; transform: scale(1.05); }
+	0%, 100% { opacity: 0.6; transform: scale(0.85); }
+	50% { opacity: 1; transform: scale(1.15); }
 }
 
 @keyframes heartbeat-thinking {
-	0%, 100% { opacity: 0.65; transform: scale(0.97); }
-	50% { opacity: 1; transform: scale(1.03); }
+	0%, 100% { opacity: 0.65; transform: scale(0.88); }
+	50% { opacity: 1; transform: scale(1.12); }
 }
 
 @keyframes heartbeat-starting {
-	0%, 100% { opacity: 0.5; transform: scale(0.9); }
-	50% { opacity: 1; transform: scale(1.1); }
+	0%, 100% { opacity: 0.5; transform: scale(0.80); }
+	50% { opacity: 1; transform: scale(1.20); }
 }
 
 @keyframes heartbeat-done {
-	from { opacity: 1; }
-	to { opacity: 0.2; }
+	from { opacity: 1; transform: scale(1.05); }
+	to { opacity: 0.75; transform: scale(1); }
 }
 
 @keyframes rotate-slow {
@@ -126,7 +143,7 @@ body {
 
 .heartbeat-asking {
 	opacity: 1;
-	transform: scale(1.05);
+	transform: scale(1.18);
 }
 
 .heartbeat-error {
@@ -139,7 +156,7 @@ body {
 }
 
 .heartbeat-done {
-	animation: heartbeat-done 2s ease-out forwards;
+	animation: heartbeat-done 1s ease-out forwards;
 }
 
 /* ═══════════ Reduced Motion ═══════════ */
@@ -158,10 +175,14 @@ body {
 	.heartbeat-starting {
 		animation: none;
 		opacity: 0.85;
+		transform: none;
+		filter: none;
 	}
 
 	.heartbeat-asking {
 		opacity: 1;
+		transform: none;
+		filter: none;
 	}
 }
 

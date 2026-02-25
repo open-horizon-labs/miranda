@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { AppRegionData, Phase, AgentInfo } from '$lib/types.js';
+	import { crossfade } from 'svelte/transition';
+	import { expoOut } from 'svelte/easing';
 	import PhaseColumn from '$lib/components/PhaseColumn.svelte';
 
 	interface Props {
@@ -7,6 +9,20 @@
 	}
 
 	const PHASES: Phase[] = ['queued', 'building', 'review', 'done'];
+
+	const prefersReducedMotion =
+		typeof window !== 'undefined'
+			? window.matchMedia('(prefers-reduced-motion: reduce)')
+			: null;
+
+	const [send, receive] = crossfade({
+		duration: () => (prefersReducedMotion?.matches ? 0 : 800),
+		easing: expoOut,
+		fallback(node) {
+			const d = prefersReducedMotion?.matches ? 0 : 300;
+			return { duration: d, css: (t: number) => `opacity: ${t}` };
+		},
+	});
 
 	let { app }: Props = $props();
 
@@ -21,9 +37,9 @@
 	);
 
 	let temperature = $derived.by(() => {
-		if (askingCount > 0) return 'var(--attention-tint, rgba(255, 180, 60, 0.06))';
-		if (activeCount >= 3) return 'rgba(255, 140, 50, 0.05)';
-		if (activeCount >= 1) return 'rgba(255, 160, 80, 0.03)';
+		if (askingCount > 0) return 'var(--temperature-asking)';
+		if (activeCount >= 3) return 'var(--temperature-hot)';
+		if (activeCount >= 1) return 'var(--temperature-warm)';
 		return 'transparent';
 	});
 </script>
@@ -39,6 +55,8 @@
 				issues={app.phases[phase]}
 				agents={app.agents}
 				enrichment={app.enrichment}
+				{send}
+				{receive}
 			/>
 		{/each}
 	</div>
@@ -58,7 +76,7 @@
 
 	.app-name {
 		font-family: var(--font-display);
-		font-size: var(--text-lg);
+		font-size: var(--text-xl);
 		color: var(--ground-5);
 		display: flex;
 		align-items: center;
