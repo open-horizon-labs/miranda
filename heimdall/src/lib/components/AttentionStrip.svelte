@@ -61,7 +61,9 @@
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding: 0.375rem 0;
+		padding: 0.375rem 0.5rem;
+		border-radius: 4px;
+		background: color-mix(in oklch, var(--attention) 6%, transparent);
 		font-size: var(--text-base);
 		transition: background var(--duration-attention) var(--ease-out-expo);
 		animation: slide-in-right var(--duration-appear) var(--ease-out-quart) both;
@@ -108,7 +110,7 @@
 	.item-ref {
 		flex-shrink: 0;
 		font-size: var(--text-sm);
-		color: var(--ground-4);
+		color: color-mix(in oklch, var(--attention) 40%, var(--ground-4));
 	}
 
 	.item-title {
@@ -117,7 +119,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		color: var(--ground-5);
+		color: color-mix(in oklch, var(--attention) 25%, var(--ground-5));
 		font-weight: 600;
 	}
 

@@ -14,6 +14,7 @@ export interface GitHubIssue {
   state: string;
   labels: string[];
   body: string | null;
+  closedAt?: string;
 }
 
 export interface GitHubPR {
@@ -162,6 +163,7 @@ interface CacheEntry<T> {
 const LISTING_TTL_MS = 60_000; // 60 seconds
 const issueListCache = new Map<string, CacheEntry<GitHubIssue[]>>();
 const prListCache = new Map<string, CacheEntry<GitHubPR[]>>();
+const closedIssueCache = new Map<string, CacheEntry<GitHubIssue[]>>();
 
 /**
  * Invalidate cached data for a repo after a write operation.
@@ -170,11 +172,12 @@ const prListCache = new Map<string, CacheEntry<GitHubPR[]>>();
 export function invalidateListingCache(
   owner: string,
   repo: string,
-  targets: { issues?: boolean; prs?: boolean; enrichment?: boolean } = { issues: true, prs: true, enrichment: true }
+  targets: { issues?: boolean; prs?: boolean; enrichment?: boolean; closedIssues?: boolean } = { issues: true, prs: true, enrichment: true, closedIssues: true }
 ): void {
   const key = `${owner}/${repo}`;
   if (targets.issues) issueListCache.delete(key);
   if (targets.prs) prListCache.delete(key);
+  if (targets.closedIssues) closedIssueCache.delete(key);
   if (targets.enrichment) {
     const prefix = `${key}/`;
     for (const k of enrichmentCache.keys()) {
@@ -231,6 +234,48 @@ export async function getOpenIssues(
   }
 
   issueListCache.set(cacheKey, { data: issues, expiresAt: now + LISTING_TTL_MS });
+  return issues;
+}
+
+/**
+ * Fetch recently closed issues for a repository.
+ * Returns up to 30 issues sorted by most recently updated.
+ * Results are cached for 60 seconds.
+ */
+export async function getRecentlyClosedIssues(
+  owner: string,
+  repo: string
+): Promise<GitHubIssue[]> {
+  const cacheKey = `${owner}/${repo}`;
+  const now = Date.now();
+  const cached = closedIssueCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.data;
+
+  const raw = await githubFetch<Array<{
+    number: number;
+    title: string;
+    state: string;
+    labels: Array<{ name: string }>;
+    body: string | null;
+    pull_request?: unknown;
+    closed_at: string | null;
+  }>>(`/repos/${owner}/${repo}/issues?state=closed&sort=updated&direction=desc&per_page=30&page=1`);
+
+  const issues: GitHubIssue[] = [];
+  for (const item of raw) {
+    if (item.pull_request) continue;
+
+    issues.push({
+      number: item.number,
+      title: item.title,
+      state: item.state,
+      labels: item.labels.map((l) => l.name),
+      body: item.body,
+      closedAt: item.closed_at ?? undefined,
+    });
+  }
+
+  closedIssueCache.set(cacheKey, { data: issues, expiresAt: now + LISTING_TTL_MS });
   return issues;
 }
 

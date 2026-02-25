@@ -75,7 +75,8 @@ function extractIssueNumber(taskId: string, projectName: string): number | null 
 }
 
 function classifyIssue(issue: IssueInfo, agents: Map<number, AgentInfo>): Phase {
-	// Miranda only returns open issues; closed/merged issues don't appear.
+	// Closed issues are classified by their state, not by agent/PR presence.
+	if (issue.state === 'closed') return 'done';
 	// An open issue with a PR is in review; with an active agent is building.
 	if (issue.pr) return 'review';
 	if (agents.has(issue.number)) return 'building';
@@ -176,6 +177,7 @@ export class PortfolioStore {
 	lastUpdated: Date = $state(new Date());
 	loading: boolean = $state(true);
 	error: string | null = $state(null);
+	doneToday: number = $state(0);
 
 	private _interval: ReturnType<typeof setInterval> | null = null;
 	private _refreshing = false;
@@ -199,10 +201,11 @@ export class PortfolioStore {
 					fetchPREnrichment(proj.name),
 				]);
 
-				const issues =
-					issuesRes.status === 'fulfilled' ? issuesRes.value.issues : [];
-				const repoUrl =
-					issuesRes.status === 'fulfilled' ? issuesRes.value.repoUrl : '';
+				const issuesData =
+					issuesRes.status === 'fulfilled' ? issuesRes.value : null;
+				const issues = issuesData?.issues ?? [];
+				const closedIssues = issuesData?.closedIssues ?? [];
+				const repoUrl = issuesData?.repoUrl ?? '';
 				const enrichment: Record<number, PREnrichment> =
 					enrichmentRes.status === 'fulfilled'
 						? (enrichmentRes.value.enrichment as Record<number, PREnrichment>)
@@ -217,7 +220,7 @@ export class PortfolioStore {
 					}
 				}
 
-				// Classify issues into phases
+				// Classify open issues into phases
 				const phases: Record<Phase, IssueInfo[]> = {
 					queued: [],
 					building: [],
@@ -230,12 +233,36 @@ export class PortfolioStore {
 					phases[phase].push(issue);
 				}
 
+				// Add closed issues to the done phase
+				for (const closed of closedIssues) {
+					phases.done.push({
+						number: closed.number,
+						title: closed.title,
+						state: closed.state,
+						labels: closed.labels,
+						dependsOn: [],
+						blockedBy: [],
+						pr: null,
+						closedAt: closed.closedAt ?? undefined,
+					});
+				}
+
+				// Count issues closed today
+				const todayStart = new Date();
+				todayStart.setHours(0, 0, 0, 0);
+				const todayMs = todayStart.getTime();
+				const doneToday = closedIssues.filter((ci) => {
+					if (!ci.closedAt) return false;
+					return new Date(ci.closedAt).getTime() >= todayMs;
+				}).length;
+
 				return {
 					name: proj.name,
 					repoUrl,
 					phases,
 					agents: agentMap,
 					enrichment,
+					doneToday,
 				} satisfies AppRegionData;
 			});
 
@@ -249,6 +276,7 @@ export class PortfolioStore {
 			this.apps = apps;
 			this.attention = buildAttentionItems(apps);
 			this.activeAgents = active;
+			this.doneToday = apps.reduce((sum, a) => sum + a.doneToday, 0);
 			this.lastUpdated = new Date();
 			this.loading = false;
 			this.error = null;

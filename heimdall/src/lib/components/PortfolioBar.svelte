@@ -3,9 +3,10 @@
 		activeAgents: number;
 		totalCapacity: number;
 		loading: boolean;
+		doneToday: number;
 	}
 
-	let { activeAgents, totalCapacity, loading }: Props = $props();
+	let { activeAgents, totalCapacity, loading, doneToday }: Props = $props();
 
 	let pulseClass = $derived(
 		loading ? 'pulse heartbeat-starting' : activeAgents > 0 ? 'pulse heartbeat-working' : 'pulse idle'
@@ -22,6 +23,22 @@
 			<div class="dot" class:filled={i < activeAgents}></div>
 		{/each}
 	</div>
+
+	{#if doneToday > 0}
+		<span class="done-today tabular-nums">
+			<svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true">
+				<polyline
+					points="2.5,6.5 5,9 9.5,3"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
+			</svg>
+			{doneToday} today
+		</span>
+	{/if}
 </div>
 
 <style>
@@ -66,5 +83,16 @@
 
 	.dot.filled {
 		background: var(--pulse-active);
+	}
+
+	.done-today {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		font-family: var(--font-data);
+		font-size: var(--text-xs);
+		color: var(--done);
+		margin-inline-start: auto;
+		flex-shrink: 0;
 	}
 </style>

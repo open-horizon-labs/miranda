@@ -82,8 +82,8 @@
 	<svg
 		class="marker-svg {heartbeatClass}"
 		class:rotate-slow={isRotating}
-		width="12"
-		height="12"
+		width="18"
+		height="18"
 		viewBox="0 0 12 12"
 		aria-hidden="true"
 	>
@@ -135,6 +135,24 @@
 
 	.marker-svg {
 		flex-shrink: 0;
+		transition: filter var(--duration-status) var(--ease-out-expo);
+	}
+
+	.marker-svg:global(.heartbeat-working),
+	.marker-svg:global(.heartbeat-starting) {
+		filter: drop-shadow(0 0 4px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-thinking) {
+		filter: drop-shadow(0 0 3px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-asking) {
+		filter: drop-shadow(0 0 6px var(--pulse-active)) drop-shadow(0 0 10px var(--pulse-active));
+	}
+
+	.marker-svg:global(.heartbeat-error) {
+		filter: drop-shadow(0 0 4px var(--attention));
 	}
 
 	.issue-number {
@@ -146,7 +164,7 @@
 
 	.issue-title {
 		font-size: var(--text-sm);
-		font-family: var(--font-display);
+		font-family: var(--font-data);
 		color: var(--ground-5);
 		overflow: hidden;
 		text-overflow: ellipsis;

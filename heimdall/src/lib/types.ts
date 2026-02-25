@@ -36,6 +36,7 @@ export interface IssueInfo {
 		mergeable: boolean | null;
 		url: string;
 	} | null;
+	closedAt?: string;
 }
 
 // CI check info
@@ -58,6 +59,7 @@ export interface AppRegionData {
 	phases: Record<Phase, IssueInfo[]>;
 	agents: Map<number, AgentInfo>; // issue number -> agent
 	enrichment: Record<number, PREnrichment>; // pr number -> enrichment
+	doneToday: number;
 }
 
 // Attention item (needs human action)
@@ -79,4 +81,5 @@ export interface PortfolioState {
 	activeAgents: number;
 	totalCapacity: number;
 	lastUpdated: Date;
+	doneToday: number;
 }

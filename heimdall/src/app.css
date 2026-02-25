@@ -16,9 +16,9 @@
 	--waiting: oklch(70% 0.04 250);
 
 	/* Temperature — region background tints */
-	--temperature-asking: oklch(82% 0.14 65 / 0.06);
-	--temperature-hot: oklch(75% 0.16 55 / 0.05);
-	--temperature-warm: oklch(80% 0.12 75 / 0.03);
+	--temperature-asking: oklch(82% 0.14 65 / 0.18);
+	--temperature-hot: oklch(75% 0.16 55 / 0.12);
+	--temperature-warm: oklch(80% 0.12 75 / 0.08);
 
 	color-scheme: light dark;
 
@@ -63,9 +63,9 @@
 		--waiting: oklch(72% 0.05 250);
 
 		/* Temperature — region background tints */
-		--temperature-asking: oklch(75% 0.12 65 / 0.08);
-		--temperature-hot: oklch(70% 0.14 55 / 0.07);
-		--temperature-warm: oklch(75% 0.10 75 / 0.04);
+		--temperature-asking: oklch(75% 0.12 65 / 0.22);
+		--temperature-hot: oklch(70% 0.14 55 / 0.16);
+		--temperature-warm: oklch(75% 0.10 75 / 0.10);
 	}
 }
 
@@ -103,23 +103,23 @@ body {
 /* ═══════════ Heartbeat Keyframes ═══════════ */
 
 @keyframes heartbeat-working {
-	0%, 100% { opacity: 0.6; transform: scale(0.95); }
-	50% { opacity: 1; transform: scale(1.05); }
+	0%, 100% { opacity: 0.6; transform: scale(0.85); }
+	50% { opacity: 1; transform: scale(1.15); }
 }
 
 @keyframes heartbeat-thinking {
-	0%, 100% { opacity: 0.65; transform: scale(0.97); }
-	50% { opacity: 1; transform: scale(1.03); }
+	0%, 100% { opacity: 0.65; transform: scale(0.88); }
+	50% { opacity: 1; transform: scale(1.12); }
 }
 
 @keyframes heartbeat-starting {
-	0%, 100% { opacity: 0.5; transform: scale(0.9); }
-	50% { opacity: 1; transform: scale(1.1); }
+	0%, 100% { opacity: 0.5; transform: scale(0.80); }
+	50% { opacity: 1; transform: scale(1.20); }
 }
 
 @keyframes heartbeat-done {
-	from { opacity: 1; }
-	to { opacity: 0.2; }
+	from { opacity: 1; transform: scale(1.05); }
+	to { opacity: 0.75; transform: scale(1); }
 }
 
 @keyframes rotate-slow {
@@ -143,7 +143,7 @@ body {
 
 .heartbeat-asking {
 	opacity: 1;
-	transform: scale(1.05);
+	transform: scale(1.18);
 }
 
 .heartbeat-error {
@@ -156,7 +156,7 @@ body {
 }
 
 .heartbeat-done {
-	animation: heartbeat-done 2s ease-out forwards;
+	animation: heartbeat-done 1s ease-out forwards;
 }
 
 /* ═══════════ Reduced Motion ═══════════ */
@@ -175,10 +175,14 @@ body {
 	.heartbeat-starting {
 		animation: none;
 		opacity: 0.85;
+		transform: none;
+		filter: none;
 	}
 
 	.heartbeat-asking {
 		opacity: 1;
+		transform: none;
+		filter: none;
 	}
 }
 
