@@ -1,11 +1,11 @@
 ---
 name: oh-plan
-description: Create GitHub issues from task descriptions or session context. Investigates when needed, skips when context exists.
+description: Create GitHub issues from task descriptions or session context. When Problem Weave is present, plan only selected S&T steps and preserve their lineage.
 ---
 
 # oh-plan
 
-Creates well-structured GitHub issues ready for oh-task agents. Works in two modes:
+Create GitHub issues ready for oh-task agents. The skill has two modes:
 
 1. **Task mode**: Investigates codebase, asks clarifying questions, creates issues
 2. **Session mode**: Reads existing `.oh/<session>.md` context, skips investigation, creates issues
@@ -13,10 +13,10 @@ Creates well-structured GitHub issues ready for oh-task agents. Works in two mod
 ## Invocation
 
 ```bash
-# Task mode - investigate from scratch
+# Task mode: investigate from scratch
 /oh-plan "Add dark mode support to the dashboard"
 
-# Session mode - use existing context from skills workflow
+# Session mode: use existing context from skills workflow
 /oh-plan auth-refactor
 ```
 
@@ -31,6 +31,12 @@ Else:
     → Task mode (investigate, ask questions)
 ```
 
+## JIT References
+
+If the session contains `## Problem Weave` or `### S&T Selection`,
+load [references/open-horizons-session.md](references/open-horizons-session.md).
+It defines the selection gate, issue hierarchy, S&T lineage block, session plan table, and workflow handoff.
+
 ## Session Mode Flow
 
 When `.oh/<session>.md` exists with solution-space context:
@@ -38,6 +44,7 @@ When `.oh/<session>.md` exists with solution-space context:
 1. **Read session file** and extract:
    - `## Aim` → Goal for issues
    - `## Problem Space` → Constraints, terrain, assumptions
+   - `## Problem Weave` → Recursive S&T steps, sufficiency groups, lineage, owners, and wiring candidates
    - `## Solution Space` → Selected approach, trade-offs accepted
    - `## Problem Statement` → Framing (if present)
 
@@ -46,11 +53,18 @@ When `.oh/<session>.md` exists with solution-space context:
 3. **Skip clarifying questions** - decisions already made during solution-space
 
 4. **Decompose the selected solution** into right-sized issues:
-   - Use the Solution Space recommendation as the starting point
-   - Apply standard decomposition heuristics (see below)
-   - Aim for 1-4 hours of work per issue
+   - Start from the Solution Space recommendation
+   - If Problem Weave exists, load the Open Horizons session reference and include only `selected` step IDs
+   - Preserve the lineage fields named in that reference
+   - Stop and report a planning gap when a selected child depends on an unselected parent or incomplete sufficiency group
+   - Apply the decomposition rules below; aim for 1-4 hours of work per issue
 
-5. **Create GitHub issues** with enriched context from session:
+5. **Choose issue hierarchy**:
+   - One selected tactic that is independently deliverable → one issue
+   - Several selected tactics under one objective → use the hierarchy rules in the Open Horizons session reference
+   - Do not create an empty parent issue for a single tactic
+
+6. **Create GitHub issues** from the session context:
    ```bash
    gh issue create --title "<title>" --label "oh-planned" --body "$(cat <<'EOF'
    ## Goal
@@ -61,6 +75,8 @@ When `.oh/<session>.md` exists with solution-space context:
 
    <from Problem Space: constraints, terrain>
    <from Solution Space: selected approach>
+
+   <if Problem Weave exists, insert the S&T Lineage block from the Open Horizons session reference>
 
    ## Acceptance Criteria
 
@@ -78,12 +94,7 @@ When `.oh/<session>.md` exists with solution-space context:
    )"
    ```
 
-6. **Update session file** with created issues:
-   ```markdown
-   ## Plan
-   **Updated:** <timestamp>
-   **Issues:** #43, #44, #45
-   ```
+7. **Update the session file** with created issues. When Problem Weave exists, use the lineage table in the Open Horizons session reference.
 
 ### Session Mode Example
 
@@ -130,7 +141,7 @@ When no session file exists (current behavior):
    - Scope boundaries (what's in/out of scope)
    - Technical preferences (if multiple approaches exist)
    - Priority and any constraints
-   - Only ask questions that genuinely affect the plan
+   - Only ask questions that affect the plan
 
 3. **Assess complexity** and determine decomposition:
    - **Single coherent task** → create 1 issue
@@ -177,6 +188,7 @@ Issues created by oh-plan should be:
 - **Actionable**: Clear title, specific acceptance criteria, "done" is obvious
 - **Right-sized**: 1-4 hours of focused work (not too big, not trivial)
 - **Linked**: Dependencies explicitly noted if multiple issues created
+- **Traceable**: Session-mode issues retain selected S&T step ID, parent objective/step, sufficiency group, and acceptance signal
 
 ### Good Issue Title Examples
 
@@ -192,7 +204,7 @@ Issues created by oh-plan should be:
 
 ## Decomposition Strategy
 
-**Bias toward focused issues.** A well-scoped issue that does one thing well is better than a multifaceted issue that tries to do many things. When genuinely uncertain, prefer splitting - but don't create trivial issues.
+Prefer one focused issue per coherent change. Split only when the pieces can be tested independently; do not create trivial issues.
 
 ### When to Split
 
@@ -219,7 +231,7 @@ Consider a separate integration issue when connecting components involves:
 - Non-trivial error handling at boundaries
 - New edge cases that emerge from the combination
 - Complex state coordination between systems
-- A meaningful test surface (end-to-end flows worth testing explicitly)
+- A test surface that warrants explicit end-to-end coverage
 
 **Don't** create integration issues for:
 - Simple API calls with straightforward error handling
@@ -286,10 +298,12 @@ Add dark mode theming system with toggle and persistence.
 ## What NOT to Do
 
 - Don't create issues for trivial changes (typo fixes, single-line changes)
-- Don't over-decompose - 10 tiny issues is worse than 2-3 well-scoped ones
-- Don't start implementation - oh-plan is for planning only
+- Don't over-decompose: 10 tiny issues are worse than 2-3 focused issues
+- Don't start implementation: oh-plan is for planning only
 - Don't skip the clarifying questions if scope is ambiguous (task mode)
 - Don't re-investigate when session context exists (session mode)
+- Don't create issues for Problem Weave tactics that Solution Space did not mark `selected`
+- Don't drop S&T IDs or lineage when converting selected tactics into issues
 
 ## Exit Conditions
 
@@ -355,19 +369,5 @@ Done. Issue #67 ready for /oh-task.
 
 ## Integration with Skills Workflow
 
-oh-plan works seamlessly with the Open Horizons skills workflow:
-
-```bash
-# Grounding phase (in skills workflow)
-/aim auth-refactor
-/problem-space auth-refactor
-/solution-space auth-refactor
-
-# Planning phase (oh-plan reads the context)
-/oh-plan auth-refactor          # Creates GitHub issues from session
-
-# Execution phase
-/oh-task 43                      # Work the issues
-```
-
-This avoids duplicating investigation work - the grounding skills gather context, oh-plan transforms it into trackable issues.
+When an Open Horizons session is present, load the session reference.
+Grounding skills gather context; oh-plan turns selected work into traceable issues without repeating the investigation.

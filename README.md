@@ -19,7 +19,7 @@ Miranda lets you orchestrate [oh-my-pi](https://github.com/open-horizon-labs/oh-
 | Name | Role | Reference |
 |------|------|-----------|
 | **Miranda** | Telegram bot | The ractor who voices the Primer |
-| **oh-plan** | Task planner | Investigates and creates GitHub issues |
+| **oh-plan** | Task planner | Investigates tasks or turns selected S&T steps into traceable GitHub issues |
 | **oh-task** | Issue worker | Works GitHub issues autonomously |
 | **oh-merge** | Batch merger | Merges GitHub issue PRs in rhythm |
 | **oh-notes** | PR feedback | Addresses review comments |
