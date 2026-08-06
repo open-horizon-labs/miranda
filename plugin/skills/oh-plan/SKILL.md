@@ -1,6 +1,6 @@
 ---
 name: oh-plan
-description: Create GitHub issues from task descriptions or session context. Investigates when needed, skips when context exists.
+description: Create GitHub issues from task descriptions or session context, preserving selected Problem Weave S&T lineage when present. Investigates when needed, skips when context exists.
 ---
 
 # oh-plan
@@ -38,6 +38,7 @@ When `.oh/<session>.md` exists with solution-space context:
 1. **Read session file** and extract:
    - `## Aim` → Goal for issues
    - `## Problem Space` → Constraints, terrain, assumptions
+   - `## Problem Weave` → Recursive S&T steps, sufficiency groups, lineage, owners, and wiring candidates (if present)
    - `## Solution Space` → Selected approach, trade-offs accepted
    - `## Problem Statement` → Framing (if present)
 
@@ -47,10 +48,20 @@ When `.oh/<session>.md` exists with solution-space context:
 
 4. **Decompose the selected solution** into right-sized issues:
    - Use the Solution Space recommendation as the starting point
+   - If Problem Weave exists, read `### S&T Selection` from Solution Space and include only step IDs marked `selected`
+   - Preserve each selected step's parent objective, parent step, sufficiency group, owner, review trigger, necessity, and parallel assumption
+   - Do not create implementation issues for `candidate`, `rejected`, or `deferred` steps
+   - If a selected child depends on an unselected required parent or an incomplete sufficiency group, stop and report the planning gap
    - Apply standard decomposition heuristics (see below)
    - Aim for 1-4 hours of work per issue
 
-5. **Create GitHub issues** with enriched context from session:
+5. **Choose issue hierarchy**:
+   - One selected tactic that is independently deliverable → one issue
+   - Several selected tactics under one objective → create a parent tracking issue (or an epic when the repository supports an epic issue type/label), then child issues
+   - Preserve S&T dependencies with `Depends on #N`; hierarchy does not replace dependency links
+   - Do not create an empty parent issue for a single tactic
+
+6. **Create GitHub issues** with enriched context from session:
    ```bash
    gh issue create --title "<title>" --label "oh-planned" --body "$(cat <<'EOF'
    ## Goal
@@ -61,6 +72,17 @@ When `.oh/<session>.md` exists with solution-space context:
 
    <from Problem Space: constraints, terrain>
    <from Solution Space: selected approach>
+
+   ## S&T Lineage
+
+   - **Step:** <selected S&T step ID>
+   - **Parent objective:** <strategy from Problem Weave>
+   - **Parent step:** <root or parent step ID>
+   - **Sufficiency group:** <group ID and mode>
+   - **Necessity:** <why this tactic is required>
+   - **Parallel assumption:** <why this tactic is credible now>
+   - **Owner:** <role>
+   - **Review trigger:** <when to reassess>
 
    ## Acceptance Criteria
 
@@ -78,11 +100,14 @@ When `.oh/<session>.md` exists with solution-space context:
    )"
    ```
 
-6. **Update session file** with created issues:
+7. **Update session file** with created issues and their S&T lineage:
    ```markdown
    ## Plan
    **Updated:** <timestamp>
-   **Issues:** #43, #44, #45
+
+   | S&T Step | Disposition | Issue/Epic | Parent Step | Depends On |
+   |---|---|---|---|---|
+   | [id] | selected | [#43] | [root/id] | [none/#N] |
    ```
 
 ### Session Mode Example
@@ -177,6 +202,7 @@ Issues created by oh-plan should be:
 - **Actionable**: Clear title, specific acceptance criteria, "done" is obvious
 - **Right-sized**: 1-4 hours of focused work (not too big, not trivial)
 - **Linked**: Dependencies explicitly noted if multiple issues created
+- **Traceable**: Session-mode issues retain selected S&T step ID, parent objective/step, sufficiency group, and acceptance signal
 
 ### Good Issue Title Examples
 
@@ -193,6 +219,14 @@ Issues created by oh-plan should be:
 ## Decomposition Strategy
 
 **Bias toward focused issues.** A well-scoped issue that does one thing well is better than a multifaceted issue that tries to do many things. When genuinely uncertain, prefer splitting - but don't create trivial issues.
+
+### S&T Decomposition Rules
+
+- Treat a selected S&T tactic as the planning source, not automatically as one issue. Split only when the tactic contains independently testable work.
+- Keep every child issue attached to the selected step ID; do not manufacture new strategy branches during planning.
+- A parent tracking issue represents the shared strategy/objective. Child issues represent work needed to enact selected tactics.
+- Before creating issues, verify the selected child set satisfies its named sufficiency group or record the explicit gap in the parent issue.
+- When issue execution teaches that a parallel assumption is false, route back to the session's review trigger rather than silently rewriting the plan.
 
 ### When to Split
 
@@ -290,6 +324,8 @@ Add dark mode theming system with toggle and persistence.
 - Don't start implementation - oh-plan is for planning only
 - Don't skip the clarifying questions if scope is ambiguous (task mode)
 - Don't re-investigate when session context exists (session mode)
+- Don't create issues for Problem Weave tactics that Solution Space did not mark `selected`
+- Don't drop S&T IDs or lineage when converting selected tactics into issues
 
 ## Exit Conditions
 
@@ -361,6 +397,8 @@ oh-plan works seamlessly with the Open Horizons skills workflow:
 # Grounding phase (in skills workflow)
 /aim auth-refactor
 /problem-space auth-refactor
+/problem-weave auth-refactor       # Optional for multi-layer problems
+/problem-statement auth-refactor
 /solution-space auth-refactor
 
 # Planning phase (oh-plan reads the context)
