@@ -7,7 +7,7 @@ Telegram bot for remote Claude orchestration. The ractor who gives voice to the 
 | Component | Name | Reference |
 |-----------|------|-----------|
 | This bot | **Miranda** | The ractor who voices the Primer for Nell |
-| Task planner | **oh-plan** | Investigates tasks or converts selected S&T steps into traceable GitHub issues |
+| Task planner | **oh-plan** | Investigates tasks or turns selected S&T steps into traceable GitHub issues |
 | Issue worker | **oh-task** | Works GitHub issues autonomously |
 | Batch merger | **oh-merge** | Merges issue PRs in rhythm |
 | PR feedback | **oh-notes** | Addresses review comments |
